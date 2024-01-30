@@ -1,0 +1,4 @@
+[submodule "external/neural-astar"]
+	path = external/neural-astar
+	url = https://github.com/bottlenome/neural-astar
+	branch = pytorch2.1.2-cuda11.8
