@@ -23,11 +23,15 @@ class PositionalEncoding(nn.Module):
 
 
 class GPT(nn.Module):
-    def __init__(self, d_vocab, d_model=128, nhead=4,
-                 num_layers=6, dropout=0.0):
+    def __init__(self, d_vocab, seq_max, d_model=128, nhead=4,
+                 num_layers=6, dropout=0.0,
+                 embed=None):
         super().__init__()
-        self.embed = torch.nn.Embedding(d_vocab + 1, d_model)
-        self.pos_encoder = PositionalEncoding(d_model, dropout)
+        if embed is None:
+            # int(d_vocab+1) to float(d_model)
+            self.embed = torch.nn.Embedding(d_vocab + 1, d_model)
+        self.pos_encoder = PositionalEncoding(
+                d_model, dropout, max_len=seq_max)
         encoder_layer = TransformerEncoderLayer(
                 d_model, nhead,
                 dim_feedforward=d_model*4, dropout=dropout)
@@ -44,4 +48,10 @@ class GPT(nn.Module):
 
 
 if __name__ == '__main__':
-    model = GPT(113)
+    model = GPT(113, 32 * 32)
+    # batch, map
+    data = torch.zeros(10, 32 * 32, dtype=torch.int64)
+    # map, batch
+    data = data.permute(1, 0)
+    out = model(data)
+    print(out.shape)

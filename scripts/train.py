@@ -16,6 +16,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 
 import pytorch_lightning as L
 import torch.nn as nn
+import bracket_net.domain.planning.gpt as gpt
 
 
 class Sample(L.LightningModule):
@@ -79,6 +80,7 @@ def main(config):
 
     module = PlannerModule(neural_astar, config)
     module = Sample()
+    module = gpt.Naive()
     logdir = f"{config.logdir}/{os.path.basename(config.dataset)}"
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
