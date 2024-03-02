@@ -78,9 +78,10 @@ def main(config):
         monitor="metrics/h_mean", save_weights_only=True, mode="max"
     )
 
-    module = PlannerModule(neural_astar, config)
-    module = Sample()
-    module = gpt.Naive()
+    # module = PlannerModule(neural_astar, config)
+    # module = Sample()
+    # module = gpt.Naive()
+    module = gpt.NNAstarLike()
     logdir = f"{config.logdir}/{os.path.basename(config.dataset)}"
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
