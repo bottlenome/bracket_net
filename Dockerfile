@@ -10,4 +10,9 @@ RUN apt-get update && apt-get install -y \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get -y update && apt-get -y install --no-install-recommends software-properties-common libgl1-mesa-dev wget libssl-dev
 
-RUN pip3 install -U pip distlib setuptools wheel
+RUN pip install -U pip distlib setuptools wheel
+RUN pip install -U wandb
+WORKDIR /root/
+COPY ./external/neural-astar/ /root/
+RUN ls
+RUN pip install .
