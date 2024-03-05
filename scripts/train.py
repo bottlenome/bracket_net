@@ -80,20 +80,25 @@ def main(config):
             Tmax=config.Tmax,
         )
         module = PlannerModule(neural_astar, config)
-        name = f"{config.model.name}-{config.encoder.arch}-{config.encoder.depth}"
+        name = f"{config.model.name}-{config.encoder.arch}"
+        name += f"-{config.encoder.depth}"
     elif config.model.name == "gpt-naive":
         module = gpt.Naive(config)
-        name = f"{config.model.name}-{config.gpt.d_model}-{config.gpt.nhead}-{config.gpt.num_layers}"
+        name = f"{config.model.name}-{config.gpt.d_model}"
+        name += f"-{config.gpt.nhead}-{config.gpt.num_layers}"
     elif config.model.name == "gpt-nnastarlike":
         module = gpt.NNAstarLike(config)
-        name = f"{config.model.name}-{config.gpt.d_model}-{config.gpt.nhead}-{config.gpt.num_layers}"
+        name = f"{config.model.name}-{config.gpt.d_model}"
+        name += f"-{config.gpt.nhead}-{config.gpt.num_layers}"
     elif config.model.name == "sample":
         module = Sample()
         name = f"{config.model.name}"
     else:
         raise ValueError(f"Unknown model: {config.model.name}")
     # logdir = f"{config.logdir}/{os.path.basename(config.dataset)}"
-    wandb_logger = WandbLogger(name=name, project=config.project, log_model=True)
+    wandb_logger = WandbLogger(name=name,
+                               project=config.project,
+                               log_model=True)
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         log_every_n_steps=1,

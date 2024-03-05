@@ -3,12 +3,21 @@ from ...model import gpt
 import pytorch_lightning as L
 import torch
 import torch.nn as nn
+from neural_astar.planner.astar import VanillaAstar
+
+
+def get_p_opt(vanilla_astar, map_designs, start_maps, goal_maps, paths):
+    if map_designs.shape[1] == 1:
+        va_outputs = vanilla_astar(map_designs, start_maps, goal_maps)
+        pathlen_astar = va_outputs.paths.sum((1, 2, 3)).detach().cpu().numpy()
+        pathlen_model = paths.sum((1, 2, 3)).detach().cpu().numpy()
+        p_opt = (pathlen_astar == pathlen_model).mean()
+        return p_opt
 
 
 class Naive(L.LightningModule):
     def __init__(self, config):
         super().__init__()
-        # self.map = nn.Conv2d(in_channels=3, out_channels=1, kernel_size=1)
         d_vocab = config.gpt.d_vocab
         self.model = gpt.GPT(d_vocab,
                              gpt.PostionalEncodingFactory(
@@ -18,7 +27,8 @@ class Naive(L.LightningModule):
                              num_layers=config.gpt.num_layers,
                              dropout=config.gpt.dropout)
         self.remap = nn.Softmax(dim=-1)
-        self.lr = 0.001
+        self.lr = config.params.lr
+        self.vanilla_astar = VanillaAstar()
 
     def forward(self, map_designs, start_maps, goal_maps):
         # batch, 3, 32, 32
@@ -53,12 +63,19 @@ class Naive(L.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        map_designs, start_maps, goal_maps, out_trajs = opt_trajs = val_batch
+        map_designs, start_maps, goal_maps, out_trajs = val_batch
         outputs = self.forward(map_designs, start_maps, goal_maps)
         loss = nn.CrossEntropyLoss()(outputs, out_trajs)
         self.log("metrics/val_loss", loss)
         accu = (outputs.argmax(dim=1) == out_trajs).float().mean()
         self.log("metrics/val_accu", accu)
+        path = outputs.argmax(dim=1)
+        path = path.view(-1, 1, path.size(1), path.size(2))
+        p_opt = get_p_opt(self.vanilla_astar,
+                          map_designs, start_maps, goal_maps, path)
+        self.log("metrics/p_opt", accu)
+        self.log("metrics/p_exp", 0)
+        self.log("metrics/h_mean", 0)
         return loss
 
 
@@ -68,8 +85,10 @@ class NNAstarLike(L.LightningModule):
         d_vocab = config.gpt.d_vocab
         d_model = config.gpt.d_model
         self.d_vocab = d_vocab
-        self.encode = nn.Conv2d(in_channels=3, out_channels=d_model, kernel_size=1)
-        
+        self.encode = nn.Conv2d(in_channels=3,
+                                out_channels=d_model,
+                                kernel_size=1)
+
         self.model = gpt.GPT(d_vocab,
                              gpt.PostionalEncodingFactory(
                                  "2d", height=32, width=32),
@@ -80,6 +99,7 @@ class NNAstarLike(L.LightningModule):
                              embed=self.encode)
         self.remap = nn.Softmax(dim=-1)
         self.lr = config.params.lr
+        self.vanilla_astar = VanillaAstar()
 
     def forward(self, map_designs, start_maps, goal_maps):
         src = torch.cat([map_designs, start_maps, goal_maps], dim=1)
@@ -116,6 +136,14 @@ class NNAstarLike(L.LightningModule):
         out_trajs = out_trajs.to(torch.int64)
         loss = nn.CrossEntropyLoss()(outputs, out_trajs)
         self.log("metrics/val_loss", loss)
+        accu = (outputs.argmax(dim=1) == out_trajs).float().mean()
+        self.log("metrics/accu", accu)
+        path = outputs.argmax(dim=1)
+        path = path.view(-1, 1, path.size(1), path.size(2))
+        p_opt = get_p_opt(self.vanilla_astar,
+                          map_designs, start_maps, goal_maps, path)
+        self.log("metrics/p_opt", accu)
+        self.log("metrics/p_exp", 0)
         self.log("metrics/h_mean", 0)
         return loss
 
