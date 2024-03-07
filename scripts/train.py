@@ -16,41 +16,7 @@ from pytorch_lightning.loggers import WandbLogger
 import pytorch_lightning as L
 import torch.nn as nn
 import bracket_net.domain.planning.gpt as gpt
-
-
-class Sample(L.LightningModule):
-    def __init__(self):
-        super().__init__()
-        self.model = nn.Sequential(nn.Linear(32*32*3, 32*32),
-                                   nn.ReLU(),
-                                   nn.Linear(32*32, 32*32))
-        self.lr = 0.001
-
-    def forward(self, map_designs, start_maps, goal_maps):
-        src = torch.cat([map_designs, start_maps, goal_maps], dim=1)
-        src = src.view(src.shape[0], -1)
-        out = self.model(src)
-        out = out.view(-1, 1, 32, 32)
-        return out
-
-    def configure_optimizers(self):
-        return torch.optim.RMSprop(self.model.parameters(),
-                                   self.lr)
-
-    def training_step(self, train_batch, batch_idx):
-        map_designs, start_maps, goal_maps, out_trajs = opt_trajs = train_batch
-        outputs = self.forward(map_designs, start_maps, goal_maps)
-        loss = nn.MSELoss()(outputs, out_trajs)
-        self.log("metrics/train_loss", loss)
-        return loss
-
-    def validation_step(self, val_batch, batch_idx):
-        map_designs, start_maps, goal_maps, out_trajs = opt_trajs = val_batch
-        outputs = self.forward(map_designs, start_maps, goal_maps)
-        loss = nn.MSELoss()(outputs, out_trajs)
-        self.log("metrics/val_loss", loss)
-        self.log("metrics/h_mean", 0)
-        return loss
+import bracket_net.domain.planning.sample as sample
 
 
 @hydra.main(config_path="config", config_name="train")
@@ -91,7 +57,7 @@ def main(config):
         name = f"{config.model.name}-{config.gpt.d_model}"
         name += f"-{config.gpt.nhead}-{config.gpt.num_layers}"
     elif config.model.name == "sample":
-        module = Sample()
+        module = sample.Sample(config)
         name = f"{config.model.name}"
     else:
         raise ValueError(f"Unknown model: {config.model.name}")
