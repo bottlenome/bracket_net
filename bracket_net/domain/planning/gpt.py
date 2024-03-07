@@ -10,35 +10,39 @@ from .util import CommonModule
 class Naive(CommonModule):
     def __init__(self, config):
         super().__init__(config)
-        d_vocab = config.gpt.d_vocab
-        self.model = gpt.GPT(d_vocab,
+        self.d_vocab = config.gpt.d_vocab
+        self.d_model = config.gpt.d_model
+        self.model = gpt.GPT(self.d_vocab,
                              gpt.PostionalEncodingFactory(
                                  "1d", max_len=32*32*3),
-                             d_model=config.gpt.d_vocab,
+                             d_model=self.d_model,
                              nhead=config.gpt.nhead,
                              num_layers=config.gpt.num_layers,
                              dropout=config.gpt.dropout)
-        self.remap = nn.Softmax(dim=-1)
+        self.remap = nn.Sequential(
+                        nn.ReLU(),
+                        nn.Linear(3*32*32*2, 32*32*2),
+                        nn.Softmax(dim=-1))
 
     def forward(self, map_designs, start_maps, goal_maps):
         # batch, 3, 32, 32
         src = torch.cat([map_designs, start_maps, goal_maps], dim=1)
         # float to int
         src = src.to(torch.int64)
-        # batch, 1, 32, 32
-        # src = self.map(src)
-        # batch, 32*32
+        # batch, 3, 32, 32 -> batch, 3*32*32
         src = src.view(src.shape[0], -1)
-        # map_seq, batch
+        # batch, 3*32*32 -> 3*32*32, batch
         src = src.permute(1, 0)
-        # 32*32, batch, 2
+        # 3*32*32, batch -> 3*32*32, batch, 2
         out = self.model(src)
-        # 32*32, batch, 2 -> 32*32, batch, 2
+        # 3*32*32, batch, 2 -> batch, 3*32*32, 2
+        out = out.permute(1, 0, 2)
+        # batch, 3*32*32, 2 -> batch, 3*32*32*2
+        out = out.reshape(out.shape[0], -1)
+        # batch, 3*32*32*2 -> batch, 2*32*32
         out = self.remap(out)
-        # 32*32, batch, 2 -> 32, 32, batch, 2
-        out = out.view(32, 32, -1, self.d_model)
-        # 32, 32, batch, 2 -> batch, 2, 32, 32
-        out = out.permute(2, 3, 0, 1)
+        # batch, 2*32*32 -> batch, 2, 32, 32
+        out = out.view(out.shape[0], self.d_vocab, 32, 32)
         return out
 
 

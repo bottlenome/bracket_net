@@ -1,1 +1,4 @@
 name: sample
+
+params:
+  batch_size: 25
