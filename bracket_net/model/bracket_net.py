@@ -7,6 +7,9 @@ class BracketFunc(nn.Module):
     def __init__(self, d_model=128, n_head=4, mode="base"):
         super().__init__()
         assert(d_model % n_head == 0)
+
+        self.activate = nn.GELU()
+
         dim = int(d_model / n_head)
         self.bracket_products = nn.ModuleList()
         for _ in range(n_head):
@@ -21,7 +24,6 @@ class BracketFunc(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.activate = nn.GELU()
 
 
     def forward(self, src):

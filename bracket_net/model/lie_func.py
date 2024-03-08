@@ -27,8 +27,8 @@ class LieFuncBase(nn.Module):
 
         for head_id in range(self.n_head):
             c[:, head_id], y[:, head_id] = self.lie_func(
-                    srcs[:, head_id],
                     contexts[:, head_id],
+                    srcs[:, head_id],
                     head_id)
 
         c = c.view(-1, self.d_model)

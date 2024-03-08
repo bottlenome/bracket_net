@@ -130,8 +130,8 @@ class CommonModule(L.LightningModule):
 def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
     if map_designs.shape[1] == 1:
         # va_outputs = vanilla_astar(map_designs, start_maps, goal_maps)
-        va_outputs = out_trajs
-        pathlen_astar = va_outputs.paths.sum((1, 2, 3)).detach().cpu().numpy()
+        # pathlen_astar = va_outputs.paths.sum((1, 2, 3)).detach().cpu().numpy()
+        pathlen_astar = out_trajs.sum((1, 2, 3)).detach().cpu().numpy()
         pathlen_model = paths.sum((1, 2, 3)).detach().cpu().numpy()
         p_opt = (pathlen_astar == pathlen_model).mean()
         return p_opt
@@ -166,6 +166,64 @@ class NaiveBase(CommonModule):
         src = src.permute(1, 0)
         # seq, batch -> seq, batch, d_vocab
         out = self.model(src)
+        # seq, batch, d_vocab -> batch, d_vocab, seq
+        out = out.permute(1, 2, 0)
+        return out
+
+class SeqEmbedding(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.model = nn.Conv1d(in_channels=in_channels,
+                               out_channels=out_channels,
+                               kernel_size=1)
+
+    def forward(self, src):
+        out = self.model(src)
+        # batch, out_channels, seq -> seq, batch, out_channels
+        out = out.permute(2, 0, 1)
+        return out
+
+class NNAstarLikeBase(CommonModule):
+    def __init__(self, config, Model):
+        super().__init__(config)
+        d_vocab = config.gpt.d_vocab
+        d_model = config.gpt.d_model
+        self.d_vocab = d_vocab
+        self.condition_encode = nn.Conv2d(in_channels=3,
+                                         out_channels=1,
+                                         kernel_size=1)
+        self.seq_embedding = SeqEmbedding(1, d_model)
+
+        self.model = Model(d_vocab,
+                           encoder.PostionalEncodingFactory(
+                               "none", height=32, width=32),
+                           d_model=d_model,
+                           n_head=config.gpt.n_head,
+                           num_layers=config.gpt.num_layers,
+                           dropout=config.gpt.dropout,
+                           embed=self.seq_embedding)
+        self.remap = nn.Softmax(dim=-1)
+
+    def forward(self, map_designs, start_maps, goal_maps, out_trajs):
+        # batch, 1, 32, 32 -> batch, 3, 32, 32
+        src = torch.cat([map_designs, start_maps, goal_maps], dim=1)
+        # batch, 3, 32, 32 -> batch, 1, 32, 32
+        encoded = self.condition_encode(src)
+        # batch, 1, 32, 32 -> batch, 32 * 32
+        encoded = encoded.view(encoded.size(0), -1)
+        # problem_start: batch, 1
+        # concat problem_start, encoded,
+        #        estimate_start, out_trajs, estimate_end
+        src1 = torch.cat([self.problem_start, encoded,
+                          self.estimate_start,
+                          out_trajs.view(out_trajs.size(0), -1),
+                          self.estimate_end], dim=1)
+        # batch, seq -> batch, 1, seq
+        src1 = src1.view(src1.size(0), 1, -1)
+        # batch, 1, seq -> seq, batch, d_vocab
+        out = self.model(src1)
+        # seq, batch, d_vocab -> seq, batch, d_vocab
+        out = self.remap(out)
         # seq, batch, d_vocab -> batch, d_vocab, seq
         out = out.permute(1, 2, 0)
         return out

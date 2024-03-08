@@ -61,6 +61,10 @@ def main(config):
         module = bracket_net.Naive(config)
         name = f"{config.model.name}-{config.gpt.d_model}"
         name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
+    elif config.model.name == "bracket-nnastarlike":
+        module = bracket_net.NNAstarLike(config)
+        name = f"{config.model.name}-{config.gpt.d_model}"
+        name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
     elif config.model.name == "sample":
         module = sample.Sample(config)
         name = f"{config.model.name}"
