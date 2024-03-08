@@ -144,7 +144,7 @@ class NaiveBase(CommonModule):
                            encoder.PostionalEncodingFactory(
                                "1d", max_len=32*32*4+4+1),
                            d_model=self.d_model,
-                           nhead=config.gpt.nhead,
+                           n_head=config.gpt.n_head,
                            num_layers=config.gpt.num_layers,
                            dropout=config.gpt.dropout)
 

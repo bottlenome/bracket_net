@@ -3,8 +3,9 @@ import torch.nn as nn
 import abc
 
 
-class LieFuncBase():
+class LieFuncBase(nn.Module):
     def __init__(self, bracket, d_model, n_head, dim):
+        super().__init__()
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head

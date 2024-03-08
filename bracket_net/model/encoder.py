@@ -52,12 +52,22 @@ class PositionalEncoding2D(nn.Module):
         return x.permute(2, 0, 1)
 
 
+class DoNothing(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x
+
+
 class PostionalEncodingFactory():
     def __init__(self, model_type, **kwargs):
         if model_type == "1d":
             self.model = PositionalEncoding
         elif model_type == "2d":
             self.model = PositionalEncoding2D
+        elif model_type == "none":
+            self.model = DoNothing
         else:
             print(f"invalid model_type:{model_type}")
             assert(False)
@@ -74,4 +84,6 @@ class PostionalEncodingFactory():
                               height=self.kwargs["height"],
                               width=self.kwargs["width"],
                               dropout=dropout)
+        elif self.model_type == "none":
+            return self.model()
         assert(False)

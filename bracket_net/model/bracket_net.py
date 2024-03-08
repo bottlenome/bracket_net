@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from lie_func import LieFuncFactory
+from .lie_func import LieFuncFactory
 
 
 class BracketFunc(nn.Module):
@@ -8,8 +8,8 @@ class BracketFunc(nn.Module):
         super().__init__()
         assert(d_model % n_head == 0)
         dim = int(d_model / n_head)
-        self.bracket_products = []
-        for i in range(n_head):
+        self.bracket_products = nn.ModuleList()
+        for _ in range(n_head):
             self.bracket_products.append(nn.Linear(dim*2, dim))
 
         def bracket(a, b, i):

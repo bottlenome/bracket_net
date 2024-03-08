@@ -4,7 +4,7 @@ from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 
 class GPT(nn.Module):
-    def __init__(self, d_vocab, pos_encoder, d_model=128, nhead=4,
+    def __init__(self, d_vocab, pos_encoder, d_model=128, n_head=4,
                  num_layers=6, dropout=0.0,
                  embed=None):
         super().__init__()
@@ -15,7 +15,7 @@ class GPT(nn.Module):
             self.embed = embed
         self.pos_encoder = pos_encoder(d_model, dropout)
         encoder_layer = TransformerEncoderLayer(
-                d_model, nhead,
+                d_model, n_head,
                 dim_feedforward=d_model*4, dropout=dropout)
         self.transformer_encoder = TransformerEncoder(
                 encoder_layer, num_layers, norm=None)

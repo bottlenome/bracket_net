@@ -16,6 +16,7 @@ from pytorch_lightning.loggers import WandbLogger
 import pytorch_lightning as L
 import torch.nn as nn
 import bracket_net.domain.planning.gpt as gpt
+import bracket_net.domain.planning.bracket_net as bracket_net
 import bracket_net.domain.planning.sample as sample
 
 
@@ -51,11 +52,15 @@ def main(config):
     elif config.model.name == "gpt-naive":
         module = gpt.Naive(config)
         name = f"{config.model.name}-{config.gpt.d_model}"
-        name += f"-{config.gpt.nhead}-{config.gpt.num_layers}"
+        name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
     elif config.model.name == "gpt-nnastarlike":
         module = gpt.NNAstarLike(config)
         name = f"{config.model.name}-{config.gpt.d_model}"
-        name += f"-{config.gpt.nhead}-{config.gpt.num_layers}"
+        name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
+    elif config.model.name == "bracket-naive":
+        module = bracket_net.Naive(config)
+        name = f"{config.model.name}-{config.gpt.d_model}"
+        name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
     elif config.model.name == "sample":
         module = sample.Sample(config)
         name = f"{config.model.name}"
