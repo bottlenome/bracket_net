@@ -29,8 +29,6 @@ gpt:
   dropout: 0.0
 
 
-
-
 hydra:
   job:
     chdir: False
