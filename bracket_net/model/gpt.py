@@ -105,7 +105,8 @@ class GPT(nn.Module):
 
 
 if __name__ == '__main__':
-    model = GPT(113, 32 * 32)
+    encoding = PostionalEncodingFactory("1d", max_len=32*32)
+    model = GPT(113, encoding, 32* 32)
     # batch, map
     data = torch.zeros(10, 32 * 32, dtype=torch.int64)
     # map, batch
