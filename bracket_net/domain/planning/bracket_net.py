@@ -1,9 +1,7 @@
 from typing import Any
-from ...model import bracket_net, encoder
+from ...model import bracket_net
 
-from .util import NaiveBase, CommonModule, NNAstarLikeBase
-import torch
-import torch.nn as nn
+from .util import NaiveBase, NNAstarLikeBase
 
 class ModelInterface():
     def __init__(self, Model, mode):
