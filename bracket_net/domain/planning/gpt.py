@@ -1,9 +1,8 @@
-from ...model import gpt
+from ...model import gpt, encoder
 
 import pytorch_lightning as L
 import torch
 import torch.nn as nn
-from neural_astar.planner.astar import VanillaAstar
 from .util import CommonModule
 
 
@@ -13,7 +12,7 @@ class Naive(CommonModule):
         self.d_vocab = config.gpt.d_vocab
         self.d_model = config.gpt.d_model
         self.model = gpt.GPT(self.d_vocab,
-                             gpt.PostionalEncodingFactory(
+                             encoder.PostionalEncodingFactory(
                                  "1d", max_len=32*32*4+4+1),
                              d_model=self.d_model,
                              nhead=config.gpt.nhead,
@@ -52,7 +51,7 @@ class NNAstarLike(CommonModule):
                                 kernel_size=1)
 
         self.model = gpt.GPT(d_vocab,
-                             gpt.PostionalEncodingFactory(
+                             encoder.PostionalEncodingFactory(
                                  "2d", height=32, width=32),
                              d_model=d_model,
                              nhead=config.gpt.nhead,

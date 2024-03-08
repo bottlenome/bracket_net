@@ -6,6 +6,7 @@ from neural_astar.planner.astar import VanillaAstar
 class CommonModule(L.LightningModule):
     def __init__(self, config):
         super().__init__()
+        self.save_hyperparameters()
         self.lr = config.params.lr
         self.vanilla_astar = VanillaAstar()
         self.is_gpt = (config.model.name.find("gpt") != -1)
