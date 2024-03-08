@@ -6,8 +6,13 @@ class Sample(CommonModule):
     def __init__(self, config):
         super().__init__(config)
         self.model = nn.Sequential(nn.Linear(32*32*3, 32*32*2),
-                                   nn.ReLU(),
-                                   nn.Linear(32*32*2, 32*32*2))
+                                   nn.BatchNorm1d(32*32*2),
+                                   nn.LeakyReLU(),
+                                   nn.Linear(32*32*2, 32*32*2),
+                                   nn.BatchNorm1d(32*32*2),
+                                   nn.LeakyReLU(),
+                                   nn.Linear(32*32*2, 32*32*2),
+                                   )
         self.remap = nn.Softmax(dim=-1)
 
     def forward(self, map_designs, start_maps, goal_maps):

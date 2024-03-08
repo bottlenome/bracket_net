@@ -22,7 +22,7 @@ encoder:
 
 # Model: gpt-naive, gpt-nnastarlike
 gpt:
-  d_vocab: 2
+  d_vocab: 5
   d_model: 128
   nhead: 4
   num_layers: 6

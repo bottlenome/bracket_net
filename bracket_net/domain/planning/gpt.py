@@ -14,38 +14,33 @@ class Naive(CommonModule):
         self.d_model = config.gpt.d_model
         self.model = gpt.GPT(self.d_vocab,
                              gpt.PostionalEncodingFactory(
-                                 "1d", max_len=32*32*3),
+                                 "1d", max_len=32*32*4+4+1),
                              d_model=self.d_model,
                              nhead=config.gpt.nhead,
                              num_layers=config.gpt.num_layers,
                              dropout=config.gpt.dropout)
-        self.remap = nn.Sequential(
-                        nn.ReLU(),
-                        nn.Linear(3*32*32*2, 32*32*2),
-                        nn.Softmax(dim=-1))
 
-    def forward(self, map_designs, start_maps, goal_maps):
-        # batch, 3, 32, 32
-        src = torch.cat([map_designs, start_maps, goal_maps], dim=1)
+    def forward(self, map_designs, start_maps, goal_maps, out_trajs):
+        # batch, 1, 32, 32 -> batch, 32 * 32
+        start_maps = start_maps.view(start_maps.size(0), -1)
+        goal_maps = goal_maps.view(goal_maps.size(0), -1)
+        map_designs = map_designs.view(map_designs.size(0), -1)
+        # concat problem_start, start_maps, goal_maps, map_designs,
+        #        estimate_start, out_trajs, estimate_end
+        src = torch.cat([self.problem_start, start_maps, goal_maps, map_designs,
+                        self.estimate_start,
+                        out_trajs.view(out_trajs.size(0), -1),
+                        self.estimate_end], dim=1)
         # float to int
         src = src.to(torch.int64)
-        # batch, 3, 32, 32 -> batch, 3*32*32
-        src = src.view(src.shape[0], -1)
-        # batch, 3*32*32 -> 3*32*32, batch
+        # batch, seq -> seq, batch
         src = src.permute(1, 0)
-        # 3*32*32, batch -> 3*32*32, batch, 2
+        # seq, batch -> seq, batch, d_vocab
         out = self.model(src)
-        # 3*32*32, batch, 2 -> batch, 3*32*32, 2
-        out = out.permute(1, 0, 2)
-        # batch, 3*32*32, 2 -> batch, 3*32*32*2
-        out = out.reshape(out.shape[0], -1)
-        # batch, 3*32*32*2 -> batch, 2*32*32
-        out = self.remap(out)
-        # batch, 2*32*32 -> batch, 2, 32, 32
-        out = out.view(out.shape[0], self.d_vocab, 32, 32)
+        # seq, batch, d_vocab -> batch, d_vocab, seq
+        out = out.permute(1, 2, 0)
         return out
-
-
+ 
 class NNAstarLike(CommonModule):
     def __init__(self, config):
         super().__init__(config)
