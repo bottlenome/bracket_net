@@ -42,10 +42,25 @@ class CommonModule(L.LightningModule):
         path = path.view(-1, 1, path.size(1), path.size(2))
         p_opt = get_p_opt(self.vanilla_astar,
                           map_designs, start_maps, goal_maps, path)
-        self.log("metrics/p_opt", accu)
+        self.log("metrics/p_opt", p_opt)
         self.log("metrics/p_exp", 0)
         self.log("metrics/h_mean", 0)
+        if batch_idx == 0:
+            import wandb
+            img = outputs[0].detach().argmax(dim=0)
+            img = img * 255.
+            img = img.cpu().numpy()
+            self.logger.experiment.log({
+                "image/estimated_traj": wandb.Image(img)
+            })
+            img = out_trajs[0].detach()
+            img = img * 255.
+            img = img.cpu().numpy()
+            self.logger.experiment.log({
+                "image/true_traj": wandb.Image(img)
+            })
         return loss
+
 
 def get_p_opt(vanilla_astar, map_designs, start_maps, goal_maps, paths):
     if map_designs.shape[1] == 1:
