@@ -104,8 +104,8 @@ class CommonModule(L.LightningModule):
         self.log("metrics/val_accu", accu)
         path = outputs.argmax(dim=1)
         path = path.view(-1, 1, path.size(1), path.size(2))
-        p_opt = get_p_opt(self.vanilla_astar,
-                        map_designs, start_maps, goal_maps, path)
+        p_opt = get_p_opt(out_trajs,
+                          map_designs, start_maps, goal_maps, path)
         self.log("metrics/p_opt", p_opt)
 
         self.log("metrics/p_exp", 0)
@@ -127,9 +127,10 @@ class CommonModule(L.LightningModule):
         return loss
 
 
-def get_p_opt(vanilla_astar, map_designs, start_maps, goal_maps, paths):
+def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
     if map_designs.shape[1] == 1:
-        va_outputs = vanilla_astar(map_designs, start_maps, goal_maps)
+        # va_outputs = vanilla_astar(map_designs, start_maps, goal_maps)
+        va_outputs = out_trajs
         pathlen_astar = va_outputs.paths.sum((1, 2, 3)).detach().cpu().numpy()
         pathlen_model = paths.sum((1, 2, 3)).detach().cpu().numpy()
         p_opt = (pathlen_astar == pathlen_model).mean()
