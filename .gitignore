@@ -161,7 +161,7 @@ cython_debug/
 
 multirun/
 outputs/
-model/
 data/
 wandb/
 *.ckpt
+model/*/lightning_logs/
