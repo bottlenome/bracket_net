@@ -5,7 +5,8 @@ import os
 import hydra
 import pytorch_lightning as pl
 import torch
-from neural_astar.utils.data import create_dataloader
+from neural_astar.utils.data import MazeDataset
+import torch.utils.data as data
 
 from neural_astar.planner import NeuralAstar
 from neural_astar.utils.training import PlannerModule, set_global_seeds
@@ -18,6 +19,20 @@ import torch.nn as nn
 import bracket_net.domain.planning.gpt as gpt
 import bracket_net.domain.planning.bracket_net as bracket_net
 import bracket_net.domain.planning.sample as sample
+
+
+def create_dataloader(
+    filename: str,
+    split: str,
+    batch_size: int,
+    num_starts: int = 1,
+    shuffle: bool = False,
+) -> data.DataLoader:
+    dataset = MazeDataset(filename, split, num_starts=num_starts)
+    return data.DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2,
+        pin_memory=True
+    )
 
 
 @hydra.main(config_path="config", config_name="train")
@@ -81,6 +96,12 @@ def main(config):
         max_epochs=config.params.num_epochs,
         callbacks=[checkpoint_callback],
     )
+    """
+    with torch.autograd.profiler.profile(use_cuda=True) as prof:
+        trainer.fit(module, train_loader, val_loader)
+        print(prof.key_averages().table(sort_by="self_cpu_time_total"))
+        prof.export_chrome_trace("./trace.json")
+    """
     trainer.fit(module, train_loader, val_loader)
 
 

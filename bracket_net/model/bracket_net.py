@@ -8,23 +8,19 @@ class BracketFunc(nn.Module):
         super().__init__()
         assert(d_model % n_head == 0)
 
-        self.activate = nn.GELU()
-
         dim = int(d_model / n_head)
         self.bracket_products = nn.ModuleList()
         for _ in range(n_head):
             self.bracket_products.append(nn.Linear(dim*2, dim))
 
         def bracket(a, b, i):
-            return self.activate(
-                    self.bracket_products[i](torch.cat([a, b], dim=1)))
+            return self.bracket_products[i](torch.cat([a, b], dim=1))
         self.bracket = bracket
         self.lie_func = LieFuncFactory(bracket, d_model, n_head, dim).get(mode)
 
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-
 
     def forward(self, src):
         context = self.lie_func.initialize_context(src)
@@ -57,13 +53,13 @@ class BracketNet(nn.Module):
             self.bracket_funcs.add_module(
                 f"bracket_func{i}", BracketFunc(d_model, n_head, mode))
         self.unembed = torch.nn.Linear(d_model, d_vocab)
-    
+
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         src = self.embed(src)
         src = self.pos_encoder(src)
         out = self.bracket_funcs(src)
         out = self.unembed(out)
-        return out  
+        return out
 
 
 if __name__ == '__main__':

@@ -11,6 +11,7 @@ class LieFuncBase(nn.Module):
         self.n_head = n_head
         self.dim = dim
         self.layer_norm = nn.LayerNorm(d_model)
+        self.activate = nn.GELU()
 
     @abc.abstractmethod
     def lie_func(self, c, x, head_id):
@@ -31,9 +32,9 @@ class LieFuncBase(nn.Module):
                     srcs[:, head_id],
                     head_id)
 
-        c = c.view(-1, self.d_model)
+        c = self.activate(c.view(-1, self.d_model))
         c = self.layer_norm(c)
-        y = y.view(-1, self.d_model)
+        y = self.activate(y.view(-1, self.d_model))
         y = self.layer_norm(y)
         return c, y
 

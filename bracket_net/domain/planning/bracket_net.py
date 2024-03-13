@@ -3,6 +3,7 @@ from ...model import bracket_net
 
 from .util import NaiveBase, NNAstarLikeBase
 
+
 class ModelInterface():
     def __init__(self, Model, mode):
         self.mode = mode
