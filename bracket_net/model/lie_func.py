@@ -10,7 +10,6 @@ class LieFuncBase(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.layer_norm = nn.LayerNorm(d_model)
         self.activate = nn.GELU()
 
     @abc.abstractmethod
@@ -20,10 +19,8 @@ class LieFuncBase(nn.Module):
 
     def call_1d(self, context, src):
         c, y = self.lie_func(context, src, 0)
-        c = self.activate(c.view(-1, self.d_model))
-        c = self.layer_norm(c)
-        y = self.activate(y.view(-1, self.d_model))
-        y = self.layer_norm(y)
+        c = self.activate(c)
+        y = self.activate(c)
         return c, y
 
     def call_nd(self, context, src):
@@ -43,10 +40,8 @@ class LieFuncBase(nn.Module):
 
         c = torch.stack(c_list, dim=1)
         c = self.activate(c.view(-1, self.d_model))
-        c = self.layer_norm(c)
         y = torch.stack(y_list, dim=1)
         y = self.activate(y.view(-1, self.d_model))
-        y = self.layer_norm(y)
         return c, y
 
     def __call__(self, context, src):
