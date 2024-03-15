@@ -13,6 +13,8 @@ from neural_astar.utils.training import PlannerModule, set_global_seeds
 
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.profilers import PyTorchProfiler
+
 
 import pytorch_lightning as L
 import torch.nn as nn
@@ -89,12 +91,15 @@ def main(config):
     wandb_logger = WandbLogger(name=name,
                                project=config.project,
                                log_model=True)
+    # profiler = PyTorchProfiler()
+    profiler = None
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         log_every_n_steps=1,
         logger=wandb_logger,
         max_epochs=config.params.num_epochs,
         callbacks=[checkpoint_callback],
+        profiler=profiler
     )
     """
     with torch.autograd.profiler.profile(use_cuda=True) as prof:

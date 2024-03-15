@@ -18,25 +18,43 @@ class LieFuncBase(nn.Module):
         # c, x: [batch, 1, dim]
         raise NotImplementedError()
 
-    # src: [batch, d_model]
-    def __call__(self, context, src):
-        # batch, d_model to batch, n_head, dim
-        srcs = src.view(-1, self.n_head, self.dim)
-        y = torch.zeros_like(srcs)
-        contexts = context.view(-1, self.n_head, self.dim)
-        c = torch.zeros_like(contexts)
-
-        for head_id in range(self.n_head):
-            c[:, head_id], y[:, head_id] = self.lie_func(
-                    contexts[:, head_id],
-                    srcs[:, head_id],
-                    head_id)
-
+    def call_1d(self, context, src):
+        c, y = self.lie_func(context, src, 0)
         c = self.activate(c.view(-1, self.d_model))
         c = self.layer_norm(c)
         y = self.activate(y.view(-1, self.d_model))
         y = self.layer_norm(y)
         return c, y
+
+    def call_nd(self, context, src):
+        # batch, d_model to batch, n_head, dim
+        srcs = src.view(-1, self.n_head, self.dim)
+        y_list = []
+        contexts = context.view(-1, self.n_head, self.dim)
+        c_list = []
+
+        for head_id in range(self.n_head):
+            c, y = self.lie_func(
+                    contexts[:, head_id],
+                    srcs[:, head_id],
+                    head_id)
+            c_list.append(c)
+            y_list.append(y)
+
+        c = torch.stack(c_list, dim=1)
+        c = self.activate(c.view(-1, self.d_model))
+        c = self.layer_norm(c)
+        y = torch.stack(y_list, dim=1)
+        y = self.activate(y.view(-1, self.d_model))
+        y = self.layer_norm(y)
+        return c, y
+
+    def __call__(self, context, src):
+        if self.n_head == 1:
+            return self.call_1d(context, src)
+        else:
+            return self.call_nd(context, src)
+
 
     def initialize_context(self, src):
         return torch.zeros_like(src[0])
