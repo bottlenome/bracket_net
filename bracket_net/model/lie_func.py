@@ -19,7 +19,7 @@ class LieFuncBase(nn.Module):
         raise NotImplementedError()
 
     # src: [batch, d_model]
-    def __call__(self, src, context):
+    def __call__(self, context, src):
         # batch, d_model to batch, n_head, dim
         srcs = src.view(-1, self.n_head, self.dim)
         y = torch.zeros_like(srcs)

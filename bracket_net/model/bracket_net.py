@@ -26,7 +26,7 @@ class BracketFunc(nn.Module):
         context = self.lie_func.initialize_context(src)
         ret = []
         for i in range(src.shape[0]):
-            context, r = self.lie_func(src[i], context)
+            context, r = self.lie_func(context, src[i])
             ret.append(r.clone())
         ret = torch.stack(ret)
         return ret
