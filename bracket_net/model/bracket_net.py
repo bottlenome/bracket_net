@@ -42,12 +42,14 @@ class BracketNet(nn.Module):
         self.d_model = d_vocab
         self.n_head = n_head
         self.dim = int(d_vocab / n_head)
+        self.activate = nn.GELU()
 
         if embed is None:
             self.embed = torch.nn.Embedding(d_vocab + 1, d_model)
         else:
             self.embed = embed
         self.pos_encoder = pos_encodr(d_model, dropout)
+        self.map = nn.Linear(d_model, d_model)
         self.bracket_funcs = nn.Sequential()
         for i in range(num_layers):
             self.bracket_funcs.add_module(
@@ -57,6 +59,7 @@ class BracketNet(nn.Module):
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         src = self.embed(src)
         src = self.pos_encoder(src)
+        # src = self.activate(self.map(src))
         out = self.bracket_funcs(src)
         out = self.unembed(out)
         return out

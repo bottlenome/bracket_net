@@ -10,7 +10,6 @@ class LieFuncBase(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.activate = nn.GELU()
 
     @abc.abstractmethod
     def lie_func(self, c, x, head_id):
@@ -19,8 +18,6 @@ class LieFuncBase(nn.Module):
 
     def call_1d(self, context, src):
         c, y = self.lie_func(context, src, 0)
-        c = self.activate(c)
-        y = self.activate(c)
         return c, y
 
     def call_nd(self, context, src):
@@ -39,9 +36,7 @@ class LieFuncBase(nn.Module):
             y_list.append(y)
 
         c = torch.stack(c_list, dim=1)
-        c = self.activate(c.view(-1, self.d_model))
         y = torch.stack(y_list, dim=1)
-        y = self.activate(y.view(-1, self.d_model))
         return c, y
 
     def __call__(self, context, src):
