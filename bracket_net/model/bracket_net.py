@@ -21,8 +21,18 @@ class BracketFunc(nn.Module):
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
+        self.mode_optimized = (mode.find("optimized") != -1)
 
     def forward(self, src):
+        if self.mode_optimized:
+            # seq, batch, d_model -> batch, d_model, seq
+            src = src.permute(1, 2, 0)
+            out = self.lie_func(src)
+            # batch, d_model, seq -> seq, batch, d_model
+            out = out.permute(2, 0, 1)
+            return out[:-1]
+
+
         context = self.lie_func.initialize_context(src)
         ret = []
         for i in range(src.shape[0]):

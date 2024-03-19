@@ -64,6 +64,18 @@ class LieFuncWithoutContext(LieFuncBase):
         return context, y
 
 
+class LieFuncWithoutContextOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim):
+        super().__init__()
+        self.model = nn.Conv1d(in_channels=d_model,
+                               out_channels=d_model,
+                               kernel_size=2,
+                               padding=1)
+
+    def forward(self, x):
+        return self.model(x)
+
+
 class LieFuncContextForget(LieFuncBase):
     def __init__(self, bracket, d_model, n_head, dim):
         super().__init__(bracket, d_model, n_head, dim)
@@ -130,6 +142,7 @@ class LieFuncFactory():
     def __init__(self, bracket, d_model, n_head, dim):
         self.map = {"base": LieFuncBasic,
                     "1_without_context": LieFuncWithoutContext,
+                    "1_without_context_optimized": LieFuncWithoutContextOptimized,
                     "2_context_forget": LieFuncContextForget,
                     "3_context_forget": LieFuncContextForgetMix,
                     "4_bracket_rule": LieFuncBracketRule,
