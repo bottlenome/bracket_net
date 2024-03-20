@@ -43,7 +43,7 @@ class BracketFunc(nn.Module):
 
 
 class BracketNet(nn.Module):
-    def __init__(self, d_vocab, pos_encodr,
+    def __init__(self, d_vocab, pos_encoder,
                  d_model=128, n_head=4,
                  num_layers=6, dropout=0.0,
                  embed=None, mode="base"):
@@ -58,7 +58,7 @@ class BracketNet(nn.Module):
             self.embed = torch.nn.Embedding(d_vocab + 1, d_model)
         else:
             self.embed = embed
-        self.pos_encoder = pos_encodr(d_model, dropout)
+        self.pos_encoder = pos_encoder(d_model, dropout)
         self.map = nn.Linear(d_model, d_model)
         self.bracket_funcs = nn.Sequential()
         for i in range(num_layers):

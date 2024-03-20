@@ -1,0 +1,16 @@
+project: "model"
+
+defaults:
+  - model: "bracket-naive"
+
+logdir: "runs"
+params:
+  p: 113
+  batch_size: 100
+  num_epochs: 50
+  lr: 0.001
+  d_model: 128
+
+hydra:
+  job:
+    chdir: False
