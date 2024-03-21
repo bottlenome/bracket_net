@@ -35,7 +35,7 @@ class BracketFunc(nn.Module):
             return out[:-1]
 
         context = self.lie_func.initialize_context(src)
-        ret = []
+        ret = [context.clone()]
         for i in range(src.shape[0] - 1):
             context, r = self.lie_func(context, src[i], src[i+1])
             ret.append(r.clone())
