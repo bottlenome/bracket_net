@@ -6,18 +6,21 @@ import torch
 
 from bracket_net.data.mod import create_dataloader
 
+
 @hydra.main(config_path="config", config_name="train_mod")
 def main(config):
-    train_loader, val_loader = create_dataloader(config.params.p, config.params.batch_size)
+    train_loader, val_loader = create_dataloader(config.params.p,
+                                                 config.params.batch_size)
 
     if config.model.name == "bracket-naive":
         from bracket_net.domain.mod.bracket_net import Naive
         model = Naive(config)
     else:
         raise ValueError(f"Unknown model name {config.model.name}")
-    
+
     profiler = None
-    wandb_logger = pl.loggers.WandbLogger(project=config.project, name=config.model.name, log_model=True)
+    wandb_logger = pl.loggers.WandbLogger(
+            project=config.project, name=config.model.name, log_model=True)
     trainer = pl.Trainer(
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         log_every_n_steps=1,

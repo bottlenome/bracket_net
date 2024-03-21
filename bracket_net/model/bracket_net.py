@@ -10,11 +10,13 @@ class BracketFunc(nn.Module):
 
         dim = int(d_model / n_head)
         self.bracket_products = nn.ModuleList()
+        self.activate = nn.ReLU()
         for _ in range(n_head):
             self.bracket_products.append(nn.Linear(dim*2, dim))
 
         def bracket(a, b, i):
-            return self.bracket_products[i](torch.cat([a, b], dim=1))
+            return self.activate(
+                    self.bracket_products[i](torch.cat([a, b], dim=1)))
         self.bracket = bracket
         self.lie_func = LieFuncFactory(bracket, d_model, n_head, dim).get(mode)
 
@@ -32,11 +34,10 @@ class BracketFunc(nn.Module):
             out = out.permute(2, 0, 1)
             return out[:-1]
 
-
         context = self.lie_func.initialize_context(src)
         ret = []
-        for i in range(src.shape[0]):
-            context, r = self.lie_func(context, src[i])
+        for i in range(src.shape[0] - 1):
+            context, r = self.lie_func(context, src[i], src[i+1])
             ret.append(r.clone())
         ret = torch.stack(ret)
         return ret
@@ -52,7 +53,8 @@ class BracketNet(nn.Module):
         self.d_model = d_vocab
         self.n_head = n_head
         self.dim = int(d_vocab / n_head)
-        self.activate = nn.GELU()
+        # self.activate = nn.GELU()
+        self.activate = nn.ReLU()
 
         if embed is None:
             self.embed = torch.nn.Embedding(d_vocab + 1, d_model)
@@ -69,7 +71,7 @@ class BracketNet(nn.Module):
     def forward(self, src: torch.Tensor) -> torch.Tensor:
         src = self.embed(src)
         src = self.pos_encoder(src)
-        # src = self.activate(self.map(src))
+        src = self.activate(self.map(src))
         out = self.bracket_funcs(src)
         out = self.unembed(out)
         return out

@@ -16,8 +16,8 @@ class LieFuncBase(nn.Module):
         # c, x: [batch, 1, dim]
         raise NotImplementedError()
 
-    def call_1d(self, context, src):
-        c, y = self.lie_func(context, src, 0)
+    def call_1d(self, context, src, src_1):
+        c, y = self.lie_func(context, src, src_1, 0)
         return c, y
 
     def call_nd(self, context, src):
@@ -39,21 +39,20 @@ class LieFuncBase(nn.Module):
         y = torch.stack(y_list, dim=1)
         return c, y
 
-    def __call__(self, context, src):
+    def __call__(self, context, src, src_1):
         if self.n_head == 1:
-            return self.call_1d(context, src)
+            return self.call_1d(context, src, src_1)
         else:
             return self.call_nd(context, src)
-
 
     def initialize_context(self, src):
         return torch.zeros_like(src[0])
 
 
 class LieFuncBasic(LieFuncBase):
-    def lie_func(self, c, x, head_id):
-        context = x
-        y = self.bracket(c, x, head_id)
+    def lie_func(self, c, x_i, x_i_1, head_id):
+        context = c + x_i + self.bracket(x_i_1, x_i, head_id)
+        y = context
         return context, y
 
 
