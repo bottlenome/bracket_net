@@ -56,6 +56,24 @@ class LieFuncBasic(LieFuncBase):
         return context, y
 
 
+class LieFuncBasicOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim):
+        super().__init__()
+        self.activate = nn.ReLU()
+        # convert batch, d_model, seq -> batch, d_model, seq
+        self.bracket = nn.Conv1d(in_channels=d_model,
+                                 out_channels=d_model,
+                                 kernel_size=2,
+                                 padding=1)
+
+    def forward(self, x):
+        vec = self.activate(self.bracket(x))
+        pos = x + vec[:, :, 1:]
+        # integral out
+        context = torch.cumsum(pos, dim=2)
+        return context
+
+
 class LieFuncWithoutContext(LieFuncBase):
     def lie_func(self, c, x, head_id):
         context = x
@@ -139,14 +157,16 @@ class LieFuncVectorCondition(LieFuncBase):
 
 class LieFuncFactory():
     def __init__(self, bracket, d_model, n_head, dim):
-        self.map = {"base": LieFuncBasic,
-                    "1_without_context": LieFuncWithoutContext,
-                    "1_without_context_optimized": LieFuncWithoutContextOptimized,
-                    "2_context_forget": LieFuncContextForget,
-                    "3_context_forget": LieFuncContextForgetMix,
-                    "4_bracket_rule": LieFuncBracketRule,
-                    "5_without_context": LieFuncWithoutContextBracket,
-                    "6_vector_condition": LieFuncVectorCondition}
+        self.map = {
+                "base": LieFuncBasic,
+                "base_optimized": LieFuncBasicOptimized,
+                "1_without_context": LieFuncWithoutContext,
+                "1_without_context_optimized": LieFuncWithoutContextOptimized,
+                "2_context_forget": LieFuncContextForget,
+                "3_context_forget": LieFuncContextForgetMix,
+                "4_bracket_rule": LieFuncBracketRule,
+                "5_without_context": LieFuncWithoutContextBracket,
+                "6_vector_condition": LieFuncVectorCondition}
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head

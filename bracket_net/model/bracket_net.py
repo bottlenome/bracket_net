@@ -32,7 +32,7 @@ class BracketFunc(nn.Module):
             out = self.lie_func(src)
             # batch, d_model, seq -> seq, batch, d_model
             out = out.permute(2, 0, 1)
-            return out[:-1]
+            return out
 
         context = self.lie_func.initialize_context(src)
         ret = [context.clone()]
