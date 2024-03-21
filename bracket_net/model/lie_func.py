@@ -71,7 +71,8 @@ class LieFuncBasicOptimized(nn.Module):
         pos = x + vec[:, :, 1:]
         # integral out
         context = torch.cumsum(pos, dim=2)
-        return context
+        y = context
+        return y
 
 
 class LieFuncWithoutContext(LieFuncBase):
@@ -84,13 +85,17 @@ class LieFuncWithoutContext(LieFuncBase):
 class LieFuncWithoutContextOptimized(nn.Module):
     def __init__(self, bracket, d_model, n_head, dim):
         super().__init__()
-        self.model = nn.Conv1d(in_channels=d_model,
-                               out_channels=d_model,
-                               kernel_size=2,
-                               padding=1)
+        self.activate = nn.ReLU()
+        self.bracket = nn.Conv1d(in_channels=d_model,
+                                 out_channels=d_model,
+                                 kernel_size=2,
+                                 padding=1)
 
     def forward(self, x):
-        return self.model(x)
+        vec = self.activate(self.bracket(x))
+        pos = x + vec[:, :, 1:]
+        y = pos
+        return y
 
 
 class LieFuncContextForget(LieFuncBase):
