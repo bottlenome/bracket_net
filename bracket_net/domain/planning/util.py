@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
 
+
 class CommonModule(L.LightningModule):
     def __init__(self, config):
         super().__init__()
@@ -19,14 +20,14 @@ class CommonModule(L.LightningModule):
             torch.zeros(config.params.batch_size, 1) + 3, requires_grad=False)
         self.estimate_end = nn.Parameter(
             torch.zeros(config.params.batch_size, 2) + 4, requires_grad=False)
-    
+
     def forward(self, map_designs, start_maps, goal_maps, out_trajs=None):
         raise NotImplementedError
 
     def configure_optimizers(self):
         return torch.optim.RMSprop(self.model.parameters(),
                                    self.lr)
-    
+
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
         # 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 32*32 + 32*32 + 1 + 32*32 + 1
@@ -45,9 +46,9 @@ class CommonModule(L.LightningModule):
                                ignore4], dim=1)
         train_set = train_set.to(outputs.device)
         train_set = train_set.to(torch.int64)
-        loss = nn.CrossEntropyLoss()(outputs, train_set)   
+        loss = nn.CrossEntropyLoss()(outputs, train_set)
         return loss
-    
+
     def calc_2d_loss(self, outputs, out_trajs, start_maps):
         # 1 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 1 + 32*32 + 1
@@ -63,13 +64,13 @@ class CommonModule(L.LightningModule):
                                ignore2], dim=1)
         train_set = train_set.to(outputs.device)
         train_set = train_set.to(torch.int64)
-        loss = nn.CrossEntropyLoss()(outputs, train_set)   
+        loss = nn.CrossEntropyLoss()(outputs, train_set)
         return loss
-    
+
     def calc_map_loss(self, outputs, out_trajs):
         out_trajs = out_trajs.view(out_trajs.size(0),
-                                out_trajs.size(2),
-                                out_trajs.size(3))
+                                   out_trajs.size(2),
+                                   out_trajs.size(3))
         out_trajs = out_trajs.to(torch.int64)
         loss = nn.CrossEntropyLoss()(outputs, out_trajs)
         return loss
@@ -85,7 +86,7 @@ class CommonModule(L.LightningModule):
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/train_loss", loss, prog_bar=True)
         return loss
-    
+
     def validation_step(self, val_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = val_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
@@ -130,11 +131,13 @@ class CommonModule(L.LightningModule):
 def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
     if map_designs.shape[1] == 1:
         # va_outputs = vanilla_astar(map_designs, start_maps, goal_maps)
-        # pathlen_astar = va_outputs.paths.sum((1, 2, 3)).detach().cpu().numpy()
+        # pathlen_astar = va_outputs.paths.sum(
+        #                   (1, 2, 3)).detach().cpu().numpy()
         pathlen_astar = out_trajs.sum((1, 2, 3)).detach().cpu().numpy()
         pathlen_model = paths.sum((1, 2, 3)).detach().cpu().numpy()
         p_opt = (pathlen_astar == pathlen_model).mean()
         return p_opt
+
 
 class NaiveBase(CommonModule):
     def __init__(self, config, Model):
@@ -156,10 +159,11 @@ class NaiveBase(CommonModule):
         map_designs = map_designs.view(map_designs.size(0), -1)
         # concat problem_start, start_maps, goal_maps, map_designs,
         #        estimate_start, out_trajs, estimate_end
-        src = torch.cat([self.problem_start, start_maps, goal_maps, map_designs,
-                        self.estimate_start,
-                        out_trajs.view(out_trajs.size(0), -1),
-                        self.estimate_end], dim=1)
+        src = torch.cat([self.problem_start,
+                         start_maps, goal_maps, map_designs,
+                         self.estimate_start,
+                         out_trajs.view(out_trajs.size(0), -1),
+                         self.estimate_end], dim=1)
         # float to int
         src = src.to(torch.int64)
         # batch, seq -> seq, batch
@@ -169,6 +173,7 @@ class NaiveBase(CommonModule):
         # seq, batch, d_vocab -> batch, d_vocab, seq
         out = out.permute(1, 2, 0)
         return out
+
 
 class SeqEmbedding(nn.Module):
     def __init__(self, in_channels, out_channels):
@@ -183,6 +188,7 @@ class SeqEmbedding(nn.Module):
         out = out.permute(2, 0, 1)
         return out
 
+
 class NNAstarLikeBase(CommonModule):
     def __init__(self, config, Model):
         super().__init__(config)
@@ -190,8 +196,8 @@ class NNAstarLikeBase(CommonModule):
         d_model = config.gpt.d_model
         self.d_vocab = d_vocab
         self.condition_encode = nn.Conv2d(in_channels=3,
-                                         out_channels=1,
-                                         kernel_size=1)
+                                          out_channels=1,
+                                          kernel_size=1)
         self.seq_embedding = SeqEmbedding(1, d_model)
 
         self.model = Model(d_vocab,
