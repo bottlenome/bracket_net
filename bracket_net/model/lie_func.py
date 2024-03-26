@@ -68,7 +68,7 @@ class LieFuncBasicOptimized(nn.Module):
 
     def forward(self, x):
         vec = self.activate(self.bracket(x))
-        pos = x + vec[:, :, 1:]
+        pos = x + vec[:, :, :-1]
         # integral out
         context = torch.cumsum(pos, dim=2)
         y = context
@@ -93,7 +93,7 @@ class LieFuncWithoutContextOptimized(nn.Module):
 
     def forward(self, x):
         vec = self.activate(self.bracket(x))
-        pos = x + vec[:, :, 1:]
+        pos = x + vec[:, :, :-1]
         y = pos
         return y
 

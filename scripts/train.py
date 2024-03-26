@@ -50,6 +50,10 @@ def main(config):
         config.dataset + ".npz", "valid",
         config.params.batch_size, shuffle=False
     )
+    test_loader = create_dataloader(
+        config.dataset + ".npz", "test",
+        config.params.batch_size, shuffle=False
+    )
 
     checkpoint_callback = ModelCheckpoint(
         monitor="metrics/h_mean", save_weights_only=True, mode="max"
@@ -108,6 +112,8 @@ def main(config):
         prof.export_chrome_trace("./trace.json")
     """
     trainer.fit(module, train_loader, val_loader)
+
+    trainer.test(module, test_loader)
 
 
 if __name__ == "__main__":

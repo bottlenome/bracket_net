@@ -31,7 +31,7 @@ class CommonModule(L.LightningModule):
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
         # 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 32*32 + 32*32 + 1 + 32*32 + 1
-        ignore = (torch.zeros_like(start_maps, dtype=torch.int64) - 100)
+        ignore = (torch.zeros_like(out_trajs, dtype=torch.int64) - 100)
         # batch, 32, 32 -> batch, 32*32
         ignore = ignore.view(ignore.size(0), -1)
         ignore2 = ignore.clone()
@@ -127,6 +127,63 @@ class CommonModule(L.LightningModule):
             })
         return loss
 
+    def test_step(self, test_batch, batch_idx):
+        map_designs, start_maps, goal_maps, out_trajs = test_batch
+        outputs = self.forward(map_designs, start_maps, goal_maps, None)
+        size = map_designs.size(2) * map_designs.size(3)
+        estimated_traj = []
+        # outputs becomes 32*32*4
+        for i in range(size):
+            # expected shape is batch, n_vocab, seq
+            # get one element
+            estimated_element = outputs[:, :, size*3+i:size*3+i+1]
+            estimated_traj.append(estimated_element)
+            # [(batch, n_vocab, 1), ...] -> batch, n_vocab, seq
+            answers = torch.stack(estimated_traj, dim=2)
+            # batch, n_vocab, seq -> batch, seq
+            answers = answers.argmax(dim=1)
+            # batch, seq -> batch, 1, seq
+            answers = answers.view(answers.size(0), 1, -1)
+            outputs = self.forward(
+                    map_designs, start_maps, goal_maps, answers)
+        # [(batch, n_vocab, 1), ...] -> batch, n_vocab, seq
+        answers = torch.stack(estimated_traj, dim=2).view(
+                outputs.size(0), -1, size)
+        outputs[:, :, size*3:size*3+size] = answers
+        if self.is_1d:
+            loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
+            outputs = outputs[:, :, 32*32*3+1:32*32*3+1+32*32]
+            outputs = outputs.view(outputs.size(0), -1, 32, 32)
+        elif self.is_2d:
+            loss = self.calc_2d_loss(outputs, out_trajs, start_maps)
+            outputs = outputs[:, :, 32*32+1:32*32+1+32*32]
+            outputs = outputs.view(outputs.size(0), -1, 32, 32)
+        else:
+            loss = self.calc_map_loss(outputs, out_trajs)
+        self.log("metrics/test_loss", loss, prog_bar=True)
+        accu = (outputs.argmax(dim=1) == out_trajs).float().mean()
+        self.log("metrics/test_accu", accu)
+        path = outputs.argmax(dim=1)
+        path = path.view(-1, 1, path.size(1), path.size(2))
+        p_opt = get_p_opt(out_trajs,
+                            map_designs, start_maps, goal_maps, path)
+        self.log("metrics/test/p_opt", p_opt)
+        if batch_idx == 0:
+            import wandb
+            img = outputs[0].detach().argmax(dim=0)
+            img = img * 255.
+            img = img.cpu().numpy()
+            self.logger.experiment.log({
+                "image/test_traj": wandb.Image(img)
+            })
+            img = out_trajs[0].detach()
+            img = img * 255.
+            img = img.cpu().numpy()
+            self.logger.experiment.log({
+                "image/test_true_traj": wandb.Image(img)
+            })
+        return loss
+
 
 def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
     if map_designs.shape[1] == 1:
@@ -159,11 +216,16 @@ class NaiveBase(CommonModule):
         map_designs = map_designs.view(map_designs.size(0), -1)
         # concat problem_start, start_maps, goal_maps, map_designs,
         #        estimate_start, out_trajs, estimate_end
-        src = torch.cat([self.problem_start,
-                         start_maps, goal_maps, map_designs,
-                         self.estimate_start,
-                         out_trajs.view(out_trajs.size(0), -1),
-                         self.estimate_end], dim=1)
+        if out_trajs is not None:
+            src = torch.cat([self.problem_start,
+                            start_maps, goal_maps, map_designs,
+                            self.estimate_start,
+                            out_trajs.view(out_trajs.size(0), -1),
+                            self.estimate_end], dim=1)
+        else:
+            src = torch.cat([self.problem_start,
+                            start_maps, goal_maps, map_designs,
+                            self.estimate_start], dim=1)
         # float to int
         src = src.to(torch.int64)
         # batch, seq -> seq, batch
