@@ -25,7 +25,7 @@ class CommonModule(L.LightningModule):
         raise NotImplementedError
 
     def configure_optimizers(self):
-        return torch.optim.RMSprop(self.model.parameters(),
+        return torch.optim.AdamW(self.model.parameters(),
                                    self.lr)
 
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
@@ -137,7 +137,9 @@ class CommonModule(L.LightningModule):
             # expected shape is batch, n_vocab, seq
             # get one element
             estimated_element = outputs[:, :, size*3+i:size*3+i+1]
-            estimated_traj.append(estimated_element)
+            estimated_traj.append(estimated_element.detach().clone())
+            del outputs
+            torch.cuda.empty_cache()
             # [(batch, n_vocab, 1), ...] -> batch, n_vocab, seq
             answers = torch.stack(estimated_traj, dim=2)
             # batch, n_vocab, seq -> batch, seq

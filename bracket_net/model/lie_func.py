@@ -51,7 +51,7 @@ class LieFuncBase(nn.Module):
 
 class LieFuncBasic(LieFuncBase):
     def lie_func(self, c, x_i, x_i_1, head_id):
-        context = c + x_i + self.bracket(x_i_1, x_i, head_id)
+        context = c + x_i_1 + self.bracket(x_i_1, x_i, head_id)
         y = context
         return context, y
 
@@ -76,10 +76,9 @@ class LieFuncBasicOptimized(nn.Module):
 
 
 class LieFuncWithoutContext(LieFuncBase):
-    def lie_func(self, c, x, head_id):
-        context = x
-        y = x + self.bracket(c, x, head_id)
-        return context, y
+    def lie_func(self, c, x_i, x_i_1, head_id):
+        y = x_i_1 + self.bracket(x_i_1, x_i, head_id)
+        return c, y
 
 
 class LieFuncWithoutContextOptimized(nn.Module):
@@ -126,10 +125,10 @@ class LieFuncBracketRule(LieFuncBase):
         super().__init__(bracket, d_model, n_head, dim)
         self.alpha = nn.Parameter(torch.tensor(0.5))
 
-    def lie_func(self, c, x, head_id):
+    def lie_func(self, c, x_i, x_i_1, head_id):
         context = self.bracket(
-                c.clone().detach(), self.bracket(c, x, head_id), head_id)
-        y = self.alpha * x + (1 - self.alpha) * context
+                c.clone().detach(), self.bracket(x_i, x_i_1, head_id), head_id)
+        y = self.alpha * x_i_1 + (1 - self.alpha) * context
         return context, y
 
     def initialize_context(self, src):
@@ -160,6 +159,31 @@ class LieFuncVectorCondition(LieFuncBase):
         return context, y + zero_condition
 
 
+class LieFucWithFixedContextWeightOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+        super().__init__()
+        self.bracket = bracket
+        self.d_model = d_model
+        self.n_head = n_head
+        self.dim = dim
+        self.seq_len = seq_len
+        self.problem_len = 1 + seq_len * 3 + 1
+        self.answer_len = seq_len + 2
+        seq_max = self.problem_len + self.answer_len
+        self.weight = nn.Parameter(
+            torch.randn(dim, seq_max, seq_max))
+        self.activate = nn.ReLU()
+
+    def forward(self, x):
+        w = torch.tril(self.weight, diagonal=-1)
+        # dot(x[0, 0, :], w[0, i, :]) -> c[:, :, i]
+        c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
+        # assert(c[0, 0, 0].item() < 0.001)
+        # assert(c[0, 0, 1].item() - x[0, 0, 0].item() * w[0, 1, 0].item())
+        y = x + self.bracket(c, x, 0)
+        return y
+
+
 class LieFuncFactory():
     def __init__(self, bracket, d_model, n_head, dim):
         self.map = {
@@ -171,7 +195,9 @@ class LieFuncFactory():
                 "3_context_forget": LieFuncContextForgetMix,
                 "4_bracket_rule": LieFuncBracketRule,
                 "5_without_context": LieFuncWithoutContextBracket,
-                "6_vector_condition": LieFuncVectorCondition}
+                "6_vector_condition": LieFuncVectorCondition,
+                "7_fixed_context_weight_optimized": LieFucWithFixedContextWeightOptimized
+                }
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head
