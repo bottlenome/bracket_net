@@ -22,9 +22,12 @@ class GPT(nn.Module):
         self.unembed = torch.nn.Linear(d_model, d_vocab)
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:
+        seq_size = src.shape[0]
+        mask = torch.triu(torch.ones(seq_size, seq_size), diagonal=1)
+        mask = mask.masked_fill(mask == 1, float('-inf')).to(src.device)
         src = self.embed(src)
         src = self.pos_encoder(src)
-        out = self.transformer_encoder(src)
+        out = self.transformer_encoder(src, mask=mask)
         out = self.unembed(out)
         return out
 
