@@ -14,6 +14,26 @@ class BracketFunc(nn.Module):
         for _ in range(n_head):
             self.bracket_products.append(nn.Linear(dim*2, dim))
 
+        class Bracket():
+            def __init__(self, activate, bracket_products):
+                self.activate = activate
+                self.bracket_products = bracket_products
+
+            def __call__(self, a, b, i):
+                input = torch.cat([a, b], dim=1)
+                # check input is batch, d_model or batch, d_model, seq
+                if len(input.shape) == 2:
+                    return self.activate(self.bracket_products[i](input))
+                elif len(input.shape) == 3:
+                    ret = self.activate(
+                        self.bracket_products[i](input.permute(0, 2, 1)))
+                    return ret.permute(0, 2, 1)
+                else:
+                    raise ValueError("Invalid input shape")
+
+        bracket = Bracket(self.activate, self.bracket_products)
+
+        """
         def bracket(a, b, i):
             input = torch.cat([a, b], dim=1)
             # check input is batch, d_model or batch, d_model, seq
@@ -25,6 +45,7 @@ class BracketFunc(nn.Module):
                 return ret.permute(0, 2, 1)
             else:
                 raise ValueError("Invalid input shape")
+        """
         self.bracket = bracket
         self.lie_func = LieFuncFactory(bracket, d_model, n_head, dim).get(mode)
 

@@ -159,7 +159,7 @@ class LieFuncVectorCondition(LieFuncBase):
         return context, y + zero_condition
 
 
-class LieFucWithFixedContextWeightOptimized(nn.Module):
+class LieFucWithFixedContext2DWeightOptimized(nn.Module):
     def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
         super().__init__()
         self.bracket = bracket
@@ -176,12 +176,47 @@ class LieFucWithFixedContextWeightOptimized(nn.Module):
 
     def forward(self, x):
         w = torch.tril(self.weight, diagonal=-1)
-        # dot(x[0, 0, :], w[0, i, :]) -> c[:, :, i]
+        # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
         c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
         # assert(c[0, 0, 0].item() < 0.001)
         # assert(c[0, 0, 1].item() - x[0, 0, 0].item() * w[0, 1, 0].item())
         y = x + self.bracket(c, x, 0)
         return y
+
+
+class LieFucWithBracketWeightOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim):
+        super().__init__()
+        self.bracket = bracket
+        self.d_model = d_model
+        self.n_head = n_head
+        self.dim = dim
+        self.activate = nn.ReLU()
+
+    def forward(self, x):
+        batch, dim, seq = x.shape
+        h, w = torch.tril_indices(seq, seq)
+        x_h = x[:, :, h]
+        x_w = x[:, :, w]
+        y = torch.cat([x_w, x_h], dim=1)
+        y_out = torch.zeros(batch, dim*2, seq, seq, device=x.device)
+        y_out[:, :, h, w] = y
+
+        # get bracket weight and apply
+        y_out = y_out.permute(0, 2, 3, 1).contiguous().view(batch, seq, seq, dim*2)
+        weight = self.bracket.bracket_products[0](y_out)
+        weight = weight.permute(0, 3, 1, 2)
+        assert(weight.shape == (batch, dim, seq, seq))
+        assert(weight[0, 0, 0, 1].item() < 0.001)
+        assert(weight[0, 0, 1, 2].item() < 0.001)
+        weight = weight.norm(dim=1, keepdim=True)
+        assert(weight[0, 0, 0, :].sum().item() < 1)
+        weight = 1 - weight
+
+        # dot(x[b, d, :], w[batch, dim, i, :]) -> c[b, d, i]
+        c = torch.einsum("bdw, bdwi -> bdi", x, weight)
+
+        return c
 
 
 class LieFuncFactory():
@@ -196,7 +231,8 @@ class LieFuncFactory():
                 "4_bracket_rule": LieFuncBracketRule,
                 "5_without_context": LieFuncWithoutContextBracket,
                 "6_vector_condition": LieFuncVectorCondition,
-                "7_fixed_context_weight_optimized": LieFucWithFixedContextWeightOptimized
+                "7_fixed_context_2d_weight_optimized": LieFucWithFixedContext2DWeightOptimized,
+                "8_bracket_weight_optimized": LieFucWithBracketWeightOptimized
                 }
         self.bracket = bracket
         self.d_model = d_model
