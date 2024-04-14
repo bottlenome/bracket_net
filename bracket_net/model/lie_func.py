@@ -183,6 +183,30 @@ class LieFucWithFixedContext2DWeightOptimized(nn.Module):
         y = x + self.bracket(c, x, 0)
         return y
 
+class LieFucWithFixedContext1DWeightOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+        super().__init__()
+        self.bracket = bracket
+        self.d_model = d_model
+        self.n_head = n_head
+        self.dim = dim
+        self.seq_len = seq_len
+        self.problem_len = 1 + seq_len * 3 + 1
+        self.answer_len = seq_len + 2
+        seq_max = self.problem_len + self.answer_len
+        self.weight = nn.Parameter(torch.randn(dim, seq_max))
+        self.activate = nn.ReLU()
+
+    def forward(self, x):
+        weight = self.weight.unsqueeze(2).expand(-1, -1, x.size(2))
+        w = torch.tril(weight, diagonal=-1)
+        # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
+        c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
+        # assert(c[0, 0, 0].item() < 0.001)
+        # assert(c[0, 0, 1].item() - x[0, 0, 0].item() * w[0, 1, 0].item())
+        y = x + self.bracket(c, x, 0)
+        return y
+
 
 class LieFucWithBracketWeightOptimized(nn.Module):
     def __init__(self, bracket, d_model, n_head, dim):
@@ -232,7 +256,8 @@ class LieFuncFactory():
                 "5_without_context": LieFuncWithoutContextBracket,
                 "6_vector_condition": LieFuncVectorCondition,
                 "7_fixed_context_2d_weight_optimized": LieFucWithFixedContext2DWeightOptimized,
-                "8_bracket_weight_optimized": LieFucWithBracketWeightOptimized
+                "8_fixed_context_1d_weight_optimized": LieFucWithFixedContext1DWeightOptimized,
+                "9_bracket_weight_optimized": LieFucWithBracketWeightOptimized
                 }
         self.bracket = bracket
         self.d_model = d_model
