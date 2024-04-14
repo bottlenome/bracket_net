@@ -15,13 +15,15 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.profilers import PyTorchProfiler
 
-
 import pytorch_lightning as L
 import torch.nn as nn
 import bracket_net.domain.planning.gpt as gpt
 import bracket_net.domain.planning.bracket_net as bracket_net
 import bracket_net.domain.planning.sample as sample
 
+import random
+import numpy
+import torch.utils.data as data
 
 def create_dataloader(
     filename: str,
@@ -29,12 +31,45 @@ def create_dataloader(
     batch_size: int,
     num_starts: int = 1,
     shuffle: bool = False,
+    magnification: int = 1
 ) -> data.DataLoader:
-    dataset = MazeDataset(filename, split, num_starts=num_starts)
+    dataset = AugumentedMazeDataset(filename, split, num_starts, magnification)
     return data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2,
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=1,
         pin_memory=True
     )
+
+# Apply masks to the correct answers in the data set to augment the data.
+class AugumentedMazeDataset(data.Dataset):
+    def __init__(self, filename, split, num_starts=1, magnification=1):
+        super().__init__()
+        self.dataset = MazeDataset(filename, split, num_starts=num_starts)
+        self.magnification = magnification
+        self.map = {}
+
+    def __getitem__(self, index):
+        if self.magnification == 1:
+            return self.dataset[index]
+        else:
+            dataset = self.dataset[index % len(self.dataset)]
+            map_design = dataset[0]
+            start_map = dataset[1]
+            goal_map = dataset[2]
+            opt_traj = dataset[3]
+            if index <= len(self.dataset):
+                return map_design, start_map, goal_map, opt_traj
+            else:
+                if index not in self.map:
+                    self.map[index] = random.randint(1, 1024)
+                length = self.map[index]
+                masked_opt_traj = opt_traj[:].reshape(1, -1)
+                masked_opt_traj[0, length:] = 0
+                masked_opt_traj = masked_opt_traj.reshape(1, 32, 32)
+                return map_design, start_map, goal_map, masked_opt_traj
+
+    def __len__(self):
+        return len(self.dataset) * self.magnification
+
 
 
 @hydra.main(config_path="config", config_name="train")
@@ -44,11 +79,13 @@ def main(config):
     set_global_seeds(config.seed)
     train_loader = create_dataloader(
         config.dataset + ".npz", "train",
-        config.params.batch_size, shuffle=True
+        config.params.batch_size, shuffle=True,
+        magnification=config.data.magnification
     )
     val_loader = create_dataloader(
         config.dataset + ".npz", "valid",
-        config.params.batch_size, shuffle=False
+        config.params.batch_size, shuffle=False,
+        magnification=config.data.magnification
     )
     test_loader = create_dataloader(
         config.dataset + ".npz", "test",
@@ -114,6 +151,8 @@ def main(config):
     trainer.fit(module, train_loader, val_loader)
 
     trainer.test(module, test_loader)
+
+    wandb_logger.finalize("success")
 
 
 if __name__ == "__main__":
