@@ -169,18 +169,24 @@ class LieFucWithFixedContext2DWeightOptimized(nn.Module):
         self.seq_len = seq_len
         self.problem_len = 1 + seq_len * 3 + 1
         self.answer_len = seq_len + 2
-        seq_max = self.problem_len + self.answer_len
+        self.seq_max = self.problem_len + self.answer_len
         self.weight = nn.Parameter(
-            torch.randn(dim, seq_max, seq_max))
+            torch.randn(n_head, self.seq_max, self.seq_max))
         self.activate = nn.ReLU()
 
     def forward(self, x):
-        w = torch.tril(self.weight, diagonal=-1)
+        weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1, -1).reshape(self.d_model, self.seq_max, -1)
+        w = torch.tril(weight, diagonal=-1)
         # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
         c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
         # assert(c[0, 0, 0].item() < 0.001)
         # assert(c[0, 0, 1].item() - x[0, 0, 0].item() * w[0, 1, 0].item())
-        y = x + self.bracket(c, x, 0)
+        vecs = []
+        for i in range(self.n_head):
+            index = i * self.dim
+            vec = self.bracket(c[:, index:index+self.dim], x[:, index:index+self.dim], i)
+            vecs.append(vec)
+        y = x + torch.cat(vecs, dim=1)
         return y
 
 class LieFucWithFixedContext1DWeightOptimized(nn.Module):
@@ -194,17 +200,23 @@ class LieFucWithFixedContext1DWeightOptimized(nn.Module):
         self.problem_len = 1 + seq_len * 3 + 1
         self.answer_len = seq_len + 2
         seq_max = self.problem_len + self.answer_len
-        self.weight = nn.Parameter(torch.randn(dim, seq_max))
+        self.weight = nn.Parameter(torch.randn(n_head, seq_max))
         self.activate = nn.ReLU()
 
     def forward(self, x):
-        weight = self.weight.unsqueeze(2).expand(-1, -1, x.size(2))
+        weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1)
+        weight = weight.reshape(self.d_model, -1).unsqueeze(2).expand(-1, -1, x.size(2))
         w = torch.tril(weight, diagonal=-1)
         # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
         c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
         # assert(c[0, 0, 0].item() < 0.001)
         # assert(c[0, 0, 1].item() - x[0, 0, 0].item() * w[0, 1, 0].item())
-        y = x + self.bracket(c, x, 0)
+        vecs = []
+        for i in range(self.n_head):
+            index = i * self.dim
+            vec = self.bracket(c[:, index:index+self.dim], x[:, index:index+self.dim], i)
+            vecs.append(vec)
+        y = x + torch.cat(vecs, dim=1)
         return y
 
 
