@@ -25,6 +25,7 @@ import random
 import numpy
 import torch.utils.data as data
 
+
 def create_dataloader(
     filename: str,
     split: str,
@@ -35,9 +36,10 @@ def create_dataloader(
 ) -> data.DataLoader:
     dataset = AugumentedMazeDataset(filename, split, num_starts, magnification)
     return data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=1,
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2,
         pin_memory=True
     )
+
 
 # Apply masks to the correct answers in the data set to augment the data.
 class AugumentedMazeDataset(data.Dataset):
@@ -46,6 +48,7 @@ class AugumentedMazeDataset(data.Dataset):
         self.dataset = MazeDataset(filename, split, num_starts=num_starts)
         self.magnification = magnification
         self.map = {}
+        self.ignore_index = 5
 
     def __getitem__(self, index):
         if self.magnification == 1:
@@ -56,20 +59,19 @@ class AugumentedMazeDataset(data.Dataset):
             start_map = dataset[1]
             goal_map = dataset[2]
             opt_traj = dataset[3]
-            if index <= len(self.dataset):
+            if index < len(self.dataset):
                 return map_design, start_map, goal_map, opt_traj
             else:
                 if index not in self.map:
                     self.map[index] = random.randint(1, 1024)
                 length = self.map[index]
                 masked_opt_traj = opt_traj[:].reshape(1, -1)
-                masked_opt_traj[0, length:] = 0
+                masked_opt_traj[0, length:] = self.ignore_index
                 masked_opt_traj = masked_opt_traj.reshape(1, 32, 32)
                 return map_design, start_map, goal_map, masked_opt_traj
 
     def __len__(self):
         return len(self.dataset) * self.magnification
-
 
 
 @hydra.main(config_path="config", config_name="train")

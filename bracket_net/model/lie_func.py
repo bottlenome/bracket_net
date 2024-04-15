@@ -65,6 +65,7 @@ class LieFuncBasicOptimized(nn.Module):
                                  out_channels=d_model,
                                  kernel_size=2,
                                  padding=1)
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x):
         vec = self.activate(self.bracket(x))
@@ -72,6 +73,7 @@ class LieFuncBasicOptimized(nn.Module):
         # integral out
         context = torch.cumsum(pos, dim=2)
         y = context
+        y = self.norm(y.permute(0, 2, 1)).permute(0, 2, 1)
         return y
 
 
@@ -173,6 +175,7 @@ class LieFucWithFixedContext2DWeightOptimized(nn.Module):
         self.weight = nn.Parameter(
             torch.randn(n_head, self.seq_max, self.seq_max))
         self.activate = nn.ReLU()
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x):
         weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1, -1).reshape(self.d_model, self.seq_max, -1)
@@ -187,6 +190,7 @@ class LieFucWithFixedContext2DWeightOptimized(nn.Module):
             vec = self.bracket(c[:, index:index+self.dim], x[:, index:index+self.dim], i)
             vecs.append(vec)
         y = x + torch.cat(vecs, dim=1)
+        y = self.norm(y.permute(0, 2, 1)).permute(0, 2, 1)
         return y
 
 class LieFucWithFixedContext1DWeightOptimized(nn.Module):
@@ -202,6 +206,7 @@ class LieFucWithFixedContext1DWeightOptimized(nn.Module):
         seq_max = self.problem_len + self.answer_len
         self.weight = nn.Parameter(torch.randn(n_head, seq_max))
         self.activate = nn.ReLU()
+        self.norm = nn.LayerNorm(d_model)
 
     def forward(self, x):
         weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1)
@@ -217,6 +222,7 @@ class LieFucWithFixedContext1DWeightOptimized(nn.Module):
             vec = self.bracket(c[:, index:index+self.dim], x[:, index:index+self.dim], i)
             vecs.append(vec)
         y = x + torch.cat(vecs, dim=1)
+        y = self.norm(y.permute(0, 2, 1)).permute(0, 2, 1)
         return y
 
 

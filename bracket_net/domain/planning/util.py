@@ -20,6 +20,7 @@ class CommonModule(L.LightningModule):
             torch.zeros(config.params.batch_size, 1) + 3, requires_grad=False)
         self.estimate_end = nn.Parameter(
             torch.zeros(config.params.batch_size, 2) + 4, requires_grad=False)
+        self.ignore_index=5
 
     def forward(self, map_designs, start_maps, goal_maps, out_trajs=None):
         raise NotImplementedError
@@ -31,7 +32,7 @@ class CommonModule(L.LightningModule):
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
         # 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 32*32 + 32*32 + 1 + 32*32 + 1
-        ignore = (torch.zeros_like(out_trajs, dtype=torch.int64) - 100)
+        ignore = (torch.zeros_like(out_trajs, dtype=torch.int64) + self.ignore_index)
         # batch, 32, 32 -> batch, 32*32
         ignore = ignore.view(ignore.size(0), -1)
         ignore2 = ignore.clone()
@@ -46,13 +47,13 @@ class CommonModule(L.LightningModule):
                                ignore4], dim=1)
         train_set = train_set.to(outputs.device)
         train_set = train_set.to(torch.int64)
-        loss = nn.CrossEntropyLoss()(outputs, train_set)
+        loss = nn.CrossEntropyLoss(ignore_index=self.ignore_index)(outputs, train_set)
         return loss
 
     def calc_2d_loss(self, outputs, out_trajs, start_maps):
         # 1 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 1 + 32*32 + 1
-        ignore = (torch.zeros_like(start_maps, dtype=torch.int64) - 100)
+        ignore = (torch.zeros_like(start_maps, dtype=torch.int64) + self.ignore_index)
         # batch, 32, 32 -> batch, 32*32
         ignore = ignore.view(ignore.size(0), -1)
         # batch, 1, 32, 32 -> batch, 32*32
@@ -64,7 +65,7 @@ class CommonModule(L.LightningModule):
                                ignore2], dim=1)
         train_set = train_set.to(outputs.device)
         train_set = train_set.to(torch.int64)
-        loss = nn.CrossEntropyLoss()(outputs, train_set)
+        loss = nn.CrossEntropyLoss(ignore_index=self.ignore_index)(outputs, train_set)
         return loss
 
     def calc_map_loss(self, outputs, out_trajs):
@@ -101,7 +102,7 @@ class CommonModule(L.LightningModule):
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/val_loss", loss, prog_bar=True)
-        accu = (outputs.argmax(dim=1) == out_trajs).float().mean()
+        accu = ((outputs.argmax(dim=1) == out_trajs)*(out_trajs != self.ignore_index)).float().mean()
         self.log("metrics/val_accu", accu)
         path = outputs.argmax(dim=1)
         path = path.view(-1, 1, path.size(1), path.size(2))
