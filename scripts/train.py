@@ -46,7 +46,10 @@ class AugumentedMazeDataset(data.Dataset):
     def __init__(self, filename, split, num_starts=1, magnification=1):
         super().__init__()
         self.dataset = MazeDataset(filename, split, num_starts=num_starts)
-        self.magnification = magnification
+        if split == "test":
+            self.magnification = 1
+        else:
+            self.magnification = magnification
         self.map = {}
         self.ignore_index = 5
 
