@@ -6,6 +6,13 @@ import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
 
 
+def calc_accuracy(outputs, out_trajs, ignore_index):
+    zero_mask = (out_trajs != 0)
+    ignore_mask = (out_trajs != ignore_index)
+    total = (ignore_mask*zero_mask).float().sum(dim=(1, 2)) + 0.1e-10
+    same = ((outputs.argmax(dim=1) == out_trajs)*ignore_mask*zero_mask).float().sum(dim=(1, 2))
+    return (same / total).mean()
+
 class CommonModule(L.LightningModule):
     def __init__(self, config):
         super().__init__()
@@ -102,7 +109,7 @@ class CommonModule(L.LightningModule):
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/val_loss", loss, prog_bar=True)
-        accu = ((outputs.argmax(dim=1) == out_trajs)*(out_trajs != self.ignore_index)).float().mean()
+        accu = calc_accuracy(outputs, out_trajs, self.ignore_index)
         self.log("metrics/val_accu", accu)
         path = outputs.argmax(dim=1)
         path = path.view(-1, 1, path.size(1), path.size(2))
@@ -164,7 +171,7 @@ class CommonModule(L.LightningModule):
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/test_loss", loss, prog_bar=True)
-        accu = (outputs.argmax(dim=1) == out_trajs).float().mean()
+        accu = calc_accuracy(outputs, out_trajs, self.ignore_index)
         self.log("metrics/test_accu", accu)
         path = outputs.argmax(dim=1)
         path = path.view(-1, 1, path.size(1), path.size(2))
@@ -298,3 +305,24 @@ class NNAstarLikeBase(CommonModule):
         # seq, batch, d_vocab -> batch, d_vocab, seq
         out = out.permute(1, 2, 0)
         return out
+
+if __name__ == "__main__":
+    import math
+
+    out_trajs = torch.zeros(2, 32, 32)
+    out_trajs[0, 0] = 1
+    out_trajs[1, 1:3] = 1
+    outputs = torch.zeros(2, 6, 32, 32)
+    outputs[:, 0, :, :] = 1
+    accu = calc_accuracy(outputs, out_trajs, 5)
+    assert(accu == 0.0)
+    print(accu.item())
+    outputs[:, 0, :, :] = 0
+    outputs[0, 1, 0, 0] = 1
+    accu = calc_accuracy(outputs, out_trajs, 5)
+    assert(math.fabs(accu.item() - 1./32/2) < 0.00001)
+    print(accu.item())
+    outputs[0, 1, 0] = 1
+    accu = calc_accuracy(outputs, out_trajs, 5)
+    assert(accu == 0.5)
+    print(accu.item())
