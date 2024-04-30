@@ -208,7 +208,9 @@ class LieFucWithFixedContext1DWeightOptimized(nn.Module):
         self.activate = nn.ReLU()
         self.norm = nn.LayerNorm(d_model)
 
+    # x: [batch, d_model, seq]
     def forward(self, x):
+        # [n_head, seq_max] -> [n_head, dim, seq_max]
         weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1)
         weight = weight.reshape(self.d_model, -1).unsqueeze(2).expand(-1, -1, x.size(2))
         w = torch.tril(weight, diagonal=-1)
@@ -287,6 +289,139 @@ class LieFucWithFixedContextWeightOptimized(nn.Module):
         return y
 
 
+class LieFuncBeamSearchOptimized(nn.Module):
+    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+        super().__init__()
+        self.d_model = d_model
+        self.n_head = n_head
+        self.dim = dim
+        self.seq_len = seq_len
+        self.problem_len = 1 + seq_len * 3 + 1
+        self.answer_len = seq_len + 2
+        self.seq_max = self.problem_len + self.answer_len
+        self.weight = nn.Parameter(
+            torch.randn(n_head, self.seq_max, self.seq_max))
+        self.activate = nn.ReLU()
+        self.norm = nn.LayerNorm(d_model)
+
+        self.max_turn = 7
+        self.action_size = 6
+        self.beam_size = 10
+        self.get_next_action_func = nn.Sequential(nn.Linear(d_model + d_model, self.action_size))
+        self.estimate_goal_func = nn.Sequential(nn.Linear(d_model, d_model))
+        self.action = nn.Parameter(
+            torch.randn(self.action_size, d_model))
+    
+    def get_next_action_prob(self, states, goal):
+        # [batch, seq, beam_size, d_model] -> [batch, seq, beam_size, action_size]
+        goal_expand = goal.expand(-1, -1, states.size(2), -1)
+        action_prob = self.get_next_action_func(
+            torch.cat([states, goal_expand], dim=-1))
+        return action_prob
+
+    def estimate_goal(self, contexts):
+        return self.estimate_goal_func(contexts)
+
+    # states_prob: [batch, seq, beam_size_now]
+    # action_prob: [batch, seq, beam_size_now, action_size]
+    def determine_index(self, states_prob, action_prob, beam_size_next):
+        combined_prob = states_prob.unsqueeze(-1).expand(-1, -1, -1, self.action_size) * action_prob
+        combined_prob = combined_prob.reshape(combined_prob.size(0), combined_prob.size(1), -1)
+        states_prob, combined_index = combined_prob.topk(beam_size_next, dim=-1)
+        # [batch, seq, beam_size_next]
+        beam_index = combined_index // self.action_size
+        action_index = combined_index % self.action_size
+        return beam_index, action_index, states_prob
+    
+    def update_states(self, states, beam_index, action_index, beam_size_next):
+        batch = states.size(0)
+        seq = states.size(1)
+        d_model = states.size(3)
+        states_base = torch.zeros((batch, seq, beam_size_next, d_model), device=states.device)
+        states_base = states.gather(dim=2, index=beam_index.unsqueeze(-1).expand(-1, -1, -1, d_model))
+        # choose action by index
+        # for i in range(beam_size_next):
+        #     ret[:, :, i, :] = ret[:, :, i, :] + self.action[action_index[:, i]]
+        action = self.action[action_index]
+        # choose action by one hot vector trick
+        # action_hard = torch.zeros((batch, seq, beam_size_next, self.action_size), device=states.device)
+        # action_hard = action_hard.scatter(3, action_index.unsqueeze(-1), 1)
+        return states_base + action
+
+    def update_history(self, history, beam_index, action_index, turn):
+        max_turn = history.size(3)
+        next_history = torch.zeros_like(history)
+        # for i in range(beam_size):
+        #     next_history[:, :, i, :turn] = history[:, :, beam_index[:, i], :turn]
+        #     next_history[:, :, i, turn] = action_index[:, i]
+        next_history = history.gather(dim=2, index=beam_index.unsqueeze(-1).expand(-1, -1, -1, max_turn))
+        next_history[:, :, :, turn] = action_index
+        return next_history
+    
+    def get_next_state(self, states: torch.Tensor,
+                             states_prob: torch.Tensor,
+                             action_prob: torch.Tensor,
+                             history: torch.Tensor,
+                             turn: int,
+                             beam_size: int):   
+        beam_size_now = states.size(2)
+        beam_size_next = beam_size_now * self.action_size
+        if beam_size_next > beam_size:
+            beam_size_next = beam_size
+        beam_index, action_index, states_prob = self.determine_index(states_prob, action_prob, beam_size_next)
+        next_states = self.update_states(states, beam_index, action_index, beam_size_next)
+        history = self.update_history(history, beam_index, action_index, turn)
+        return next_states, states_prob, history
+
+
+    # states: [batch, seq, beam_size, d_model]
+    # goal: [batch, seq, d_model]
+    def reached(self, states, goal):
+        # if any beam is same to goal, return True
+        ret = ((states - goal.unsqueeze(2)).sum(dim=-1).abs().max(dim=-1).values < 1.0e-10).all()
+        assert(ret.shape == (states.size(0), states.size(1)))
+        return ret
+
+
+    # x: [batch, d_model, seq]
+    # ret: [batch, d_model, seq]
+    def forward(self, x):
+        # Get state from context
+        weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1, -1).reshape(self.d_model, self.seq_max, -1)
+        w = torch.tril(weight, diagonal=-1)
+        # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
+        c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
+        # [batch, d_model, seq] -> [batch, seq, 1, d_model]
+        states = c.permute(0, 2, 1).unsqueeze(2)
+        initial_states = states.clone()
+
+        # Initialize state probability as 1
+        # [batch, seq, 1]
+        states_prob = torch.ones((states.size(0), states.size(1), states.size(2)), device=states.device, requires_grad=False)
+        goal = self.estimate_goal(states)
+        # history: [batch, seq, beam_size, max_turn]
+        history = torch.zeros((states.size(0), states.size(1), self.beam_size, self.max_turn), device=states.device, requires_grad=False)
+        for turn in range(self.max_turn):
+            # Get action probability from state
+            # ([batch, seq, beam_size, d_model], [batch, 1, beam_size, d_model])
+            # -> [batch, seq, beam_size, prob]
+            action_prob = self.get_next_action_prob(states, goal)
+            states, states_prob, history = self.get_next_state(states, states_prob, action_prob, history, turn, self.beam_size)
+            # if self.reached(states, goal):
+            #     break
+        # return most probable next state
+        history_best = states_prob.argmax(dim=-1)
+        beam_index = history_best.unsqueeze(-1)
+        # [batch, seq]
+        action_index = torch.zeros((states.size(0), states.size(1)), device=states.device, dtype=torch.long)
+        for batch in range(states.size(0)):
+            for seq in range(states.size(1)):
+                action_index[batch, seq] = history[batch, seq, history_best[batch, seq], 0]
+        action_index = action_index.unsqueeze(-1)
+        ret = self.update_states(initial_states, beam_index, action_index, 1)
+        return ret.squeeze(2).permute(0, 2, 1)
+
+
 class LieFuncFactory():
     def __init__(self, bracket, d_model, n_head, dim):
         self.map = {
@@ -321,3 +456,13 @@ if __name__ == '__main__':
     def fake(a, b):
         return None
     func = LieFuncFactory(fake, 128, 4, 32).get("base")
+
+    batch = 2
+    d_model = 16
+    n_head = 1
+    seq = 11
+    beam_search = LieFuncBeamSearchOptimized(fake, d_model=d_model, n_head=n_head, dim=d_model)
+    src = torch.randn((batch, d_model, seq))
+    dst = beam_search(src)
+    assert(src.shape == dst.shape)
+    dst.sum().backward()
