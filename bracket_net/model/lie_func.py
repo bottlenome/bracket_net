@@ -305,14 +305,36 @@ class LieFuncBeamSearchOptimized(nn.Module):
         self.norm = nn.LayerNorm(d_model)
 
         self.max_turn = 7
-        self.action_size = 6
+        self.action_size = 8
         self.beam_size = 10
-        self.get_next_action_func = nn.Sequential(nn.Linear(d_model + d_model, self.action_size))
-        self.estimate_goal_func = nn.Sequential(nn.Linear(d_model, d_model))
+        self.context2state_func = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model))
+        self.get_next_action_func = nn.Sequential(
+            nn.Linear(d_model + d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, self.action_size))
+        self.estimate_goal_func = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, d_model))
         self.action = nn.Parameter(
             torch.randn(self.action_size, d_model))
-    
+
+    def context2state(self, context):
+        """
+            Args: context: [*, d_model]
+            Returns: [*, d_model]
+        """
+        return self.context2state_func(context)
+
     def get_next_action_prob(self, states, goal):
+        """
+            Args: states: [batch, seq, beam_size, d_model]
+                  goal: [batch, seq, d_model]
+            Returns: [batch, seq, beam_size, action_size]
+        """
         # [batch, seq, beam_size, d_model] -> [batch, seq, beam_size, action_size]
         goal_expand = goal.expand(-1, -1, states.size(2), -1)
         action_prob = self.get_next_action_func(
@@ -322,9 +344,15 @@ class LieFuncBeamSearchOptimized(nn.Module):
     def estimate_goal(self, contexts):
         return self.estimate_goal_func(contexts)
 
-    # states_prob: [batch, seq, beam_size_now]
-    # action_prob: [batch, seq, beam_size_now, action_size]
     def determine_index(self, states_prob, action_prob, beam_size_next):
+        """
+            Args: states_prob: [batch, seq, beam_size_now]
+                  action_prob: [batch, seq, beam_size_now, action_size]
+                  beam_size_next: int
+            Returns: beam_index: [batch, seq, beam_size_next]
+                     action_index: [batch, seq, beam_size_next]
+                     states_prob: [batch, seq, beam_size_next]
+        """
         combined_prob = states_prob.unsqueeze(-1).expand(-1, -1, -1, self.action_size) * action_prob
         combined_prob = combined_prob.reshape(combined_prob.size(0), combined_prob.size(1), -1)
         states_prob, combined_index = combined_prob.topk(beam_size_next, dim=-1)
@@ -334,21 +362,31 @@ class LieFuncBeamSearchOptimized(nn.Module):
         return beam_index, action_index, states_prob
     
     def update_states(self, states, beam_index, action_index, beam_size_next):
+        """
+            Args: states: [batch, seq, beam_size_now, d_model]
+                  beam_index: [batch, seq, beam_size_next]
+                  action_index: [batch, seq, beam_size_next]
+                  beam_size_next: int
+            Returns: [batch, seq, beam_size_next, d_model]
+        """
         batch = states.size(0)
         seq = states.size(1)
         d_model = states.size(3)
-        states_base = torch.zeros((batch, seq, beam_size_next, d_model), device=states.device)
         states_base = states.gather(dim=2, index=beam_index.unsqueeze(-1).expand(-1, -1, -1, d_model))
         # choose action by index
         # for i in range(beam_size_next):
         #     ret[:, :, i, :] = ret[:, :, i, :] + self.action[action_index[:, i]]
         action = self.action[action_index]
-        # choose action by one hot vector trick
-        # action_hard = torch.zeros((batch, seq, beam_size_next, self.action_size), device=states.device)
-        # action_hard = action_hard.scatter(3, action_index.unsqueeze(-1), 1)
-        return states_base + action
+        return self.norm(states_base + action)
 
     def update_history(self, history, beam_index, action_index, turn):
+        """
+            Args: history: [batch, seq, beam_size, max_turn]
+                  beam_index: [batch, seq, beam_size_next]
+                  action_index: [batch, seq, beam_size_next]
+                  turn: int
+            Returns: [batch, seq, beam_size, max_turn]
+        """
         max_turn = history.size(3)
         next_history = torch.zeros_like(history)
         # for i in range(beam_size):
@@ -357,13 +395,24 @@ class LieFuncBeamSearchOptimized(nn.Module):
         next_history = history.gather(dim=2, index=beam_index.unsqueeze(-1).expand(-1, -1, -1, max_turn))
         next_history[:, :, :, turn] = action_index
         return next_history
-    
+
     def get_next_state(self, states: torch.Tensor,
                              states_prob: torch.Tensor,
                              action_prob: torch.Tensor,
                              history: torch.Tensor,
                              turn: int,
-                             beam_size: int):   
+                             beam_size: int):
+        """
+            Args: states: [batch, seq, beam_size_now, d_model]
+                  states_prob: [batch, seq, beam_size_now]
+                  action_prob: [batch, seq, beam_size_now, action_size]
+                  history: [batch, seq, beam_size, max_turn]
+                  turn: int
+                  beam_size: int
+            Returns: next_states: [batch, seq, beam_size_next, d_model]
+                     states_prob: [batch, seq, beam_size_next]
+                     history: [batch, seq, beam_size, max_turn]
+        """
         beam_size_now = states.size(2)
         beam_size_next = beam_size_now * self.action_size
         if beam_size_next > beam_size:
@@ -392,7 +441,7 @@ class LieFuncBeamSearchOptimized(nn.Module):
         # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
         c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
         # [batch, d_model, seq] -> [batch, seq, 1, d_model]
-        states = c.permute(0, 2, 1).unsqueeze(2)
+        states = self.context2state(c.permute(0, 2, 1).unsqueeze(2))
         initial_states = states.clone()
 
         # Initialize state probability as 1
@@ -400,7 +449,7 @@ class LieFuncBeamSearchOptimized(nn.Module):
         states_prob = torch.ones((states.size(0), states.size(1), states.size(2)), device=states.device, requires_grad=False)
         goal = self.estimate_goal(states)
         # history: [batch, seq, beam_size, max_turn]
-        history = torch.zeros((states.size(0), states.size(1), self.beam_size, self.max_turn), device=states.device, requires_grad=False)
+        history = torch.zeros((states.size(0), states.size(1), self.beam_size, self.max_turn), device=states.device, requires_grad=False, dtype=torch.uint8)
         for turn in range(self.max_turn):
             # Get action probability from state
             # ([batch, seq, beam_size, d_model], [batch, 1, beam_size, d_model])
@@ -413,12 +462,16 @@ class LieFuncBeamSearchOptimized(nn.Module):
         history_best = states_prob.argmax(dim=-1)
         beam_index = history_best.unsqueeze(-1)
         # [batch, seq]
-        action_index = torch.zeros((states.size(0), states.size(1)), device=states.device, dtype=torch.long)
-        for batch in range(states.size(0)):
-            for seq in range(states.size(1)):
-                action_index[batch, seq] = history[batch, seq, history_best[batch, seq], 0]
-        action_index = action_index.unsqueeze(-1)
-        ret = self.update_states(initial_states, beam_index, action_index, 1)
+        # action_index = torch.zeros((states.size(0), states.size(1)), device=states.device, dtype=torch.long)
+        # for batch in range(states.size(0)):
+        #     for seq in range(states.size(1)):
+        #         action_index[batch, seq] = history[batch, seq, history_best[batch, seq], 0]
+        # action_index = action_index.unsqueeze(-1)
+        # print(action_index)
+        indices = history_best.unsqueeze(-1)
+        action_index = history[:, :, :, 0].gather(dim=2, index=indices).type(torch.long)
+        next_states = self.update_states(initial_states, beam_index, action_index, 1)
+        ret = self.norm(next_states)
         return ret.squeeze(2).permute(0, 2, 1)
 
 
@@ -438,6 +491,7 @@ class LieFuncFactory():
                 "8_fixed_context_1d_weight_optimized": LieFucWithFixedContext1DWeightOptimized,
                 "9_bracket_weight_optimized": LieFucWithBracketWeightOptimized,
                 "10_fixed_context_weight_optimized": LieFucWithFixedContextWeightOptimized,
+                "11_beam_search_optimized": LieFuncBeamSearchOptimized,
                 }
         self.bracket = bracket
         self.d_model = d_model
@@ -466,3 +520,41 @@ if __name__ == '__main__':
     dst = beam_search(src)
     assert(src.shape == dst.shape)
     dst.sum().backward()
+
+    src = src.permute(0, 2, 1).unsqueeze(2)
+    dst = beam_search.context2state(src)
+    assert(src.shape == dst.shape)
+
+    goal = beam_search.estimate_goal(src)
+    assert(goal.shape == src.shape)
+
+    action_prob = beam_search.get_next_action_prob(src, goal)
+    assert(action_prob.shape == (batch, seq, 1, beam_search.action_size))
+    print("action_prob", action_prob[0, 0, 0])
+
+    states_prob = torch.ones((batch, seq, 1), device=src.device)
+    action_prob = torch.ones((batch, seq, 1, beam_search.action_size), device=src.device) / beam_search.action_size
+    beam_size_next = beam_search.action_size
+    beam_index, action_index, states_prob = beam_search.determine_index(states_prob, action_prob, beam_size_next)
+    assert(states_prob.shape == (batch, seq, beam_size_next))
+    assert(states_prob.sum().item() == batch * seq)
+    assert(beam_index.shape == (batch, seq, beam_size_next))
+    print(beam_index[0, 0])
+    print(action_index[0, 0])
+
+    action_prob[:, :, :, 0] = 0
+    action_prob[:, :, :, 1] = 2./8
+    beam_index, action_index, states_prob = beam_search.determine_index(states_prob, action_prob, beam_size_next)
+    print("action index of action prob 0.2 at index 1")
+    print(action_index[0, 0])
+
+    beam_index = torch.zeros((batch, seq, beam_size_next), device=src.device, dtype=torch.long)
+    next_states = beam_search.update_states(src, beam_index, action_index, beam_size_next)
+    assert(next_states.shape == (batch, seq, beam_size_next, d_model))
+    print("next_states", next_states[0, 0, 0])
+
+    history = torch.zeros((batch, seq, beam_search.beam_size, beam_search.max_turn), device=src.device, requires_grad=False)
+    history = beam_search.update_history(history, beam_index, action_index, 0)
+    print("history", history[0, 0, 0])
+
+
