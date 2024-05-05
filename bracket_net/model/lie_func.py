@@ -424,13 +424,16 @@ class LieFuncBeamSearchOptimized(nn.Module):
         return next_states, states_prob, history
 
 
-    # states: [batch, seq, beam_size, d_model]
-    # goal: [batch, seq, d_model]
     def reached(self, states, goal):
-        # if any beam is same to goal, return True
-        ret = ((states - goal.unsqueeze(2)).sum(dim=-1).abs().max(dim=-1).values < 1.0e-10).all()
-        assert(ret.shape == (states.size(0), states.size(1)))
-        return ret
+        """ Get mask of unreached goal
+
+            Args: states: [batch, seq, beam_size, d_model]
+                  goal: [batch, seq, d_model]
+            Returns: [batch, seq, beam_size]
+        """
+        unreached = (states - goal.unsqueeze(2)).abs().sum(dim=-1) < 1.0e-10
+        assert(unreached.shape == (states.size(0), states.size(1), states.size(2)))
+        return unreached
 
     # x: [batch, d_model, seq]
     # ret: [batch, d_model, seq]
@@ -457,7 +460,8 @@ class LieFuncBeamSearchOptimized(nn.Module):
             # -> [batch, seq, beam_size, prob]
             action_prob = self.get_next_action_prob(states, goal)
             states, states_prob, history = self.get_next_state(states, states_prob, action_prob, history, turn, self.beam_size)
-            # if self.reached(states, goal):
+            # unreached = self.reached(states, goal)
+            # if self.unreached.sum().item() == 0:
             #     break
         # return most probable next state
         history_best = states_prob.argmax(dim=-1)
@@ -472,8 +476,7 @@ class LieFuncBeamSearchOptimized(nn.Module):
         indices = history_best.unsqueeze(-1)
         action_index = history[:, :, :, 0].gather(dim=2, index=indices).type(torch.long)
         next_states = self.update_states(initial_states, beam_index, action_index, 1)
-        ret = self.norm(next_states)
-        return ret.squeeze(2).permute(0, 2, 1)
+        return next_states.squeeze(2).permute(0, 2, 1)
 
 
 class LieFuncFactory():
