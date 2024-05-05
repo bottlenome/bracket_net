@@ -158,7 +158,15 @@ def main(config):
         print(prof.key_averages().table(sort_by="self_cpu_time_total"))
         prof.export_chrome_trace("./trace.json")
     """
+    """
+    from pytorch_memlab import MemReporter
+    reporter = MemReporter(module.model)
+    reporter.report()
+    """
     trainer.fit(module, train_loader, val_loader)
+    """
+    reporter.report()
+    """
 
     trainer.test(module, test_loader)
 

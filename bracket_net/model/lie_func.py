@@ -314,7 +314,8 @@ class LieFuncBeamSearchOptimized(nn.Module):
         self.get_next_action_func = nn.Sequential(
             nn.Linear(d_model + d_model, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, self.action_size))
+            nn.Linear(d_model, self.action_size),
+            nn.Softmax(dim=-1))
         self.estimate_goal_func = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.ReLU(),
@@ -431,25 +432,25 @@ class LieFuncBeamSearchOptimized(nn.Module):
         assert(ret.shape == (states.size(0), states.size(1)))
         return ret
 
-
     # x: [batch, d_model, seq]
     # ret: [batch, d_model, seq]
     def forward(self, x):
-        # Get state from context
-        weight = self.weight.unsqueeze(1).expand(-1, self.dim, -1, -1).reshape(self.d_model, self.seq_max, -1)
-        w = torch.tril(weight, diagonal=-1)
-        # dot(x[b, d, :], w[d, i, :]) -> c[b, d, i]
-        c = self.activate(torch.einsum("bdw, diw -> bdi", x, w[:, :x.size(2), :x.size(2)]))
+        # seq2context
+        w = torch.tril(self.weight[0, :x.size(2), :x.size(2)], diagonal=0)
+        c = self.activate(x @ w)
         # [batch, d_model, seq] -> [batch, seq, 1, d_model]
         states = self.context2state(c.permute(0, 2, 1).unsqueeze(2))
+        # save for last stage
         initial_states = states.clone()
-
         # Initialize state probability as 1
         # [batch, seq, 1]
         states_prob = torch.ones((states.size(0), states.size(1), states.size(2)), device=states.device, requires_grad=False)
-        goal = self.estimate_goal(states)
+
+        goal = self.estimate_goal(c.permute(0, 2, 1).unsqueeze(2))
+
         # history: [batch, seq, beam_size, max_turn]
         history = torch.zeros((states.size(0), states.size(1), self.beam_size, self.max_turn), device=states.device, requires_grad=False, dtype=torch.uint8)
+
         for turn in range(self.max_turn):
             # Get action probability from state
             # ([batch, seq, beam_size, d_model], [batch, 1, beam_size, d_model])
