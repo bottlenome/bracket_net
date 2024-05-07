@@ -1,4 +1,5 @@
 project: "planning"
+experiment_name: "default"
 
 defaults:
   - model: "neural_astar"

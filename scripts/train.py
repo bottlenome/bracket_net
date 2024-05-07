@@ -139,6 +139,8 @@ def main(config):
     else:
         raise ValueError(f"Unknown model: {config.model.name}")
     # logdir = f"{config.logdir}/{os.path.basename(config.dataset)}"
+    if config.experiment_name != "default":
+        name = config.experiment_name
     wandb_logger = WandbLogger(name=name,
                                project=config.project,
                                log_model=True)
