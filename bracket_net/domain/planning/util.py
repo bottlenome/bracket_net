@@ -97,6 +97,8 @@ class CommonModule(L.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = val_batch
+        # outputs: [batch, n_vocal, seq]
+        # seq: 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 2
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
         if self.is_1d:
             loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
@@ -139,12 +141,14 @@ class CommonModule(L.LightningModule):
         map_designs, start_maps, goal_maps, out_trajs = test_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, None)
         size = map_designs.size(2) * map_designs.size(3)
+        # the outputs shift 1 so ignore first element
+        index = 32*32 + 32*32 + 32*32 + 1
         estimated_traj = []
-        # outputs becomes 32*32*4
+        # outputs becomes 1 + 32*32 * 3 + 1 + 32*32 + 2
         for i in range(size):
             # expected shape is batch, n_vocab, seq
             # get one element
-            estimated_element = outputs[:, :, size*3+i:size*3+i+1]
+            estimated_element = outputs[:, :, index+i:index+i+1]
             estimated_traj.append(estimated_element.detach().clone())
             del outputs
             torch.cuda.empty_cache()
@@ -162,11 +166,11 @@ class CommonModule(L.LightningModule):
         outputs[:, :, size*3:size*3+size] = answers
         if self.is_1d:
             loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
-            outputs = outputs[:, :, 32*32*3+1:32*32*3+1+32*32]
+            outputs = outputs[:, :, index:index+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
         elif self.is_2d:
             loss = self.calc_2d_loss(outputs, out_trajs, start_maps)
-            outputs = outputs[:, :, 32*32+1:32*32+1+32*32]
+            outputs = outputs[:, :, index:index+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
@@ -177,7 +181,7 @@ class CommonModule(L.LightningModule):
         path = path.view(-1, 1, path.size(1), path.size(2))
         p_opt = get_p_opt(out_trajs,
                             map_designs, start_maps, goal_maps, path)
-        self.log("metrics/test/p_opt", p_opt)
+        self.log("metrics/test_p_opt", p_opt)
         if batch_idx == 0:
             import wandb
             img = outputs[0].detach().argmax(dim=0)

@@ -323,6 +323,8 @@ class LieFuncBeamSearchOptimized(nn.Module):
         self.action = nn.Parameter(
             torch.randn(self.action_size, d_model))
 
+        self.debug_count = 0
+
     def context2state(self, context):
         """
             Args: context: [*, d_model]
@@ -476,6 +478,14 @@ class LieFuncBeamSearchOptimized(nn.Module):
         indices = history_best.unsqueeze(-1)
         action_index = history[:, :, :, 0].gather(dim=2, index=indices).type(torch.long)
         next_states = self.update_states(initial_states, beam_index, action_index, 1)
+        # debug
+        if self.debug_count % 100 == 0:
+            print("history", history[0, 100])
+            print("states_prob", states_prob[0, 100])
+            print("history_best", history_best[0, 100])
+            print("action_index", action_index[0, 100])
+        self.debug_count += 1
+
         return next_states.squeeze(2).permute(0, 2, 1)
 
 
