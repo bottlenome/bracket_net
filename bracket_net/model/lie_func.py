@@ -314,8 +314,7 @@ class LieFuncBeamSearchOptimized(nn.Module):
         self.get_next_action_func = nn.Sequential(
             nn.Linear(d_model + d_model, d_model),
             nn.ReLU(),
-            nn.Linear(d_model, self.action_size),
-            nn.Softmax(dim=-1))
+            nn.Linear(d_model, self.action_size))
         self.estimate_goal_func = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.ReLU(),
