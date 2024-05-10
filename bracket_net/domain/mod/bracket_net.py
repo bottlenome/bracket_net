@@ -35,6 +35,9 @@ class Naive(pl.LightningModule):
         self.log('metrics/train_loss', loss, prog_bar=True)
         return loss
 
+    def on_epoch_end(self):
+        self.scheduler.step()
+
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = self(x)
@@ -53,6 +56,6 @@ class Naive(pl.LightningModule):
                 lr=self.lr,
                 weight_decay=1.0,
                 betas=(0.9, 0.98))
-        scheduler = torch.optim.lr_scheduler.StepLR(
+        self.scheduler = torch.optim.lr_scheduler.StepLR(
                 optimizer, step_size=1000, gamma=0.1)
         return optimizer

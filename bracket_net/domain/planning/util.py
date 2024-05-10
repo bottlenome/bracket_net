@@ -13,6 +13,13 @@ def calc_accuracy(outputs, out_trajs, ignore_index):
     same = ((outputs.argmax(dim=1) == out_trajs)*ignore_mask*zero_mask).float().sum(dim=(1, 2))
     return (same / total).mean()
 
+def calc_entropy(outputs):
+    """Calculate entropy of the outputs
+        Args: outputs: [batch, n_vocab, seq]
+    """
+    outputs = nn.functional.softmax(outputs, dim=1)
+    return -1 * (outputs * outputs.log()).sum(dim=1).mean()
+
 class CommonModule(L.LightningModule):
     def __init__(self, config):
         super().__init__()
@@ -28,6 +35,8 @@ class CommonModule(L.LightningModule):
         self.estimate_end = nn.Parameter(
             torch.zeros(config.params.batch_size, 2) + 4, requires_grad=False)
         self.ignore_index=5
+        self.initial_step=4000
+
 
     def forward(self, map_designs, start_maps, goal_maps, out_trajs=None):
         raise NotImplementedError
@@ -37,6 +46,10 @@ class CommonModule(L.LightningModule):
                                    self.lr)
 
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
+        # [batch, n_vocab, seq] -> [batch, seq, n_vocab]
+        outputs = outputs.permute(0, 2, 1)
+        (batch, seq, n_vocab) = outputs.size()
+        outputs = outputs.reshape(batch*seq, n_vocab)
         # 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 1 ->
         #  32*32 + 32*32 + 32*32 + 1 + 32*32 + 1
         ignore = (torch.zeros_like(out_trajs, dtype=torch.int64) + self.ignore_index)
@@ -54,6 +67,7 @@ class CommonModule(L.LightningModule):
                                ignore4], dim=1)
         train_set = train_set.to(outputs.device)
         train_set = train_set.to(torch.int64)
+        train_set = train_set.view(-1)
         loss = nn.CrossEntropyLoss(ignore_index=self.ignore_index)(outputs, train_set)
         return loss
 
@@ -93,7 +107,18 @@ class CommonModule(L.LightningModule):
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/train_loss", loss, prog_bar=True)
-        return loss
+        entropy = calc_entropy(outputs)
+        assert(entropy >= 0)
+        assert(entropy <= torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)))
+        self.log("metrics/entropy", entropy)
+        entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
+        if self.initial_step >= self.global_step:
+            l = 1.0
+        elif self.initall_step * 10 >= self.global_step:
+            l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
+        else:
+            l = 0.001
+        return loss + l * entropy_loss
 
     def validation_step(self, val_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = val_batch
@@ -102,6 +127,7 @@ class CommonModule(L.LightningModule):
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
         if self.is_1d:
             loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
+            entropy = calc_entropy(outputs)
             outputs = outputs[:, :, 32*32*3+1:32*32*3+1+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
         elif self.is_2d:
@@ -111,6 +137,7 @@ class CommonModule(L.LightningModule):
         else:
             loss = self.calc_map_loss(outputs, out_trajs)
         self.log("metrics/val_loss", loss, prog_bar=True)
+        self.log("metrics/val_entropy", entropy)
         accu = calc_accuracy(outputs, out_trajs, self.ignore_index)
         self.log("metrics/val_accu", accu)
         path = outputs.argmax(dim=1)
