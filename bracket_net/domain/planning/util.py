@@ -36,6 +36,7 @@ class CommonModule(L.LightningModule):
             torch.zeros(config.params.batch_size, 2) + 4, requires_grad=False)
         self.ignore_index=5
         self.initial_step=4000
+        self.enable_entropy_loss = config.params.enable_entropy_loss
 
 
     def forward(self, map_designs, start_maps, goal_maps, out_trajs=None):
@@ -111,14 +112,16 @@ class CommonModule(L.LightningModule):
         assert(entropy >= 0)
         assert(entropy <= torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)))
         self.log("metrics/entropy", entropy)
-        entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
-        if self.initial_step >= self.global_step:
-            l = 1.0
-        elif self.initall_step * 10 >= self.global_step:
-            l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
-        else:
-            l = 0.001
-        return loss + l * entropy_loss
+        if self.enable_entropy_loss:
+            entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
+            if self.initial_step >= self.global_step:
+                l = 1.0
+            elif self.initall_step * 10 >= self.global_step:
+                l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
+            else:
+                l = 0.001
+            loss += l * entropy_loss
+        return loss
 
     def validation_step(self, val_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = val_batch

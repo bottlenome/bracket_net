@@ -11,6 +11,7 @@ params:
   batch_size: 100
   num_epochs: 50
   lr: 0.001
+  enable_entropy_loss: False
 
 # Model specific configuration
 # Model: Neural A*
