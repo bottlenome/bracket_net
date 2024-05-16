@@ -2,3 +2,6 @@
 	path = external/neural-astar
 	url = https://github.com/bottlenome/neural-astar
 	branch = pytorch2.1.2-cuda11.8
+[submodule "external/Moduled2x2x2Cube"]
+	path = external/Moduled2x2x2Cube
+	url = https://github.com/bottlenome/Moduled2x2x2Cube.git

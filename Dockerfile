@@ -17,3 +17,4 @@ COPY ./external/neural-astar/ /root/
 RUN ls
 RUN pip install .
 RUN pip install pytorch_memlab
+RUN pip install torchdata
