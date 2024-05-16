@@ -116,7 +116,7 @@ class CommonModule(L.LightningModule):
             entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
             if self.initial_step >= self.global_step:
                 l = 1.0
-            elif self.initall_step * 10 >= self.global_step:
+            elif self.initial_step * 10 >= self.global_step:
                 l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
             else:
                 l = 0.001
