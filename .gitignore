@@ -162,6 +162,7 @@ cython_debug/
 multirun/
 outputs/
 data/
+!bracket_net/data/
 wandb/
 *.ckpt
 model/*/lightning_logs/
