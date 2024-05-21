@@ -46,6 +46,30 @@ class CommonModule(L.LightningModule):
         return torch.optim.AdamW(self.model.parameters(),
                                    self.lr)
 
+    def loss(self, outputs, train_set, start_maps):
+        if self.is_1d:
+            loss = self.calc_1d_loss(outputs, train_set, start_maps)
+        elif self.is_2d:
+            loss =  self.calc_2d_loss(outputs, train_set, start_maps)
+        else:
+            loss = self.calc_map_loss(outputs, train_set)
+        entropy = calc_entropy(outputs)
+        assert(entropy >= 0)
+        assert(entropy <= torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)))
+        if self.enable_entropy_loss:
+            entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
+            if self.initial_step >= self.global_step:
+                l = 1.0
+            elif self.initial_step * 10 >= self.global_step:
+                l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
+            else:
+                l = 0.001
+            loss += l * entropy_loss
+        else:
+            entropy_loss = torch.tensor(0.0)
+        return loss, entropy, entropy_loss
+
+
     def calc_1d_loss(self, outputs, out_trajs, start_maps):
         # [batch, n_vocab, seq] -> [batch, seq, n_vocab]
         outputs = outputs.permute(0, 2, 1)
@@ -101,27 +125,10 @@ class CommonModule(L.LightningModule):
     def training_step(self, train_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = train_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
-        if self.is_1d:
-            loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
-        elif self.is_2d:
-            loss = self.calc_2d_loss(outputs, out_trajs, start_maps)
-        else:
-            loss = self.calc_map_loss(outputs, out_trajs)
+        loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
         self.log("metrics/train_loss", loss, prog_bar=True)
-        entropy = calc_entropy(outputs)
-        assert(entropy >= 0)
-        assert(entropy <= torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)))
         self.log("metrics/entropy", entropy)
-        if self.enable_entropy_loss:
-            entropy_loss = torch.log(torch.tensor(self.d_vocab, dtype=torch.float32)) - entropy
-            if self.initial_step >= self.global_step:
-                l = 1.0
-            elif self.initial_step * 10 >= self.global_step:
-                l = (self.initial_step * 10 - self.global_step) / (self.initial_step * 10) * 0.9 + 0.001
-            else:
-                l = 0.001
-            loss += l * entropy_loss
-        return loss
+        return loss + entropy_loss
 
     def validation_step(self, val_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = val_batch
