@@ -50,7 +50,7 @@ class CommonModule(L.LightningModule):
         if self.is_1d:
             loss = self.calc_1d_loss(outputs, train_set, start_maps)
         elif self.is_2d:
-            loss =  self.calc_2d_loss(outputs, train_set, start_maps)
+            loss = self.calc_2d_loss(outputs, train_set, start_maps)
         else:
             loss = self.calc_map_loss(outputs, train_set)
         entropy = calc_entropy(outputs)
@@ -135,19 +135,15 @@ class CommonModule(L.LightningModule):
         # outputs: [batch, n_vocal, seq]
         # seq: 1 + 32*32 + 32*32 + 32*32 + 1 + 32*32 + 2
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
+        loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
+        self.log("metrics/val_loss", loss, prog_bar=True)
+        self.log("metrics/val_entropy", entropy)
         if self.is_1d:
-            loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
-            entropy = calc_entropy(outputs)
             outputs = outputs[:, :, 32*32*3+1:32*32*3+1+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
         elif self.is_2d:
-            loss = self.calc_2d_loss(outputs, out_trajs, start_maps)
             outputs = outputs[:, :, 32*32+1:32*32+1+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
-        else:
-            loss = self.calc_map_loss(outputs, out_trajs)
-        self.log("metrics/val_loss", loss, prog_bar=True)
-        self.log("metrics/val_entropy", entropy)
         accu = calc_accuracy(outputs, out_trajs, self.ignore_index)
         self.log("metrics/val_accu", accu)
         path = outputs.argmax(dim=1)
@@ -172,7 +168,7 @@ class CommonModule(L.LightningModule):
             self.logger.experiment.log({
                 "image/true_traj": wandb.Image(img)
             })
-        return loss
+        return loss + entropy_loss
 
     def test_step(self, test_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = test_batch
@@ -201,17 +197,15 @@ class CommonModule(L.LightningModule):
         answers = torch.stack(estimated_traj, dim=2).view(
                 outputs.size(0), -1, size)
         outputs[:, :, size*3:size*3+size] = answers
+        loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
+        self.log("metrics/test_loss", loss, prog_bar=True)
+        self.log("metrics/test_entropy", entropy)
         if self.is_1d:
-            loss = self.calc_1d_loss(outputs, out_trajs, start_maps)
-            outputs = outputs[:, :, index:index+32*32]
+            outputs = outputs[:, :, 32*32*3+1:32*32*3+1+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
         elif self.is_2d:
-            loss = self.calc_2d_loss(outputs, out_trajs, start_maps)
-            outputs = outputs[:, :, index:index+32*32]
+            outputs = outputs[:, :, 32*32+1:32*32+1+32*32]
             outputs = outputs.view(outputs.size(0), -1, 32, 32)
-        else:
-            loss = self.calc_map_loss(outputs, out_trajs)
-        self.log("metrics/test_loss", loss, prog_bar=True)
         accu = calc_accuracy(outputs, out_trajs, self.ignore_index)
         self.log("metrics/test_accu", accu)
         path = outputs.argmax(dim=1)
@@ -233,7 +227,7 @@ class CommonModule(L.LightningModule):
             self.logger.experiment.log({
                 "image/test_true_traj": wandb.Image(img)
             })
-        return loss
+        return loss + entropy_loss
 
 
 def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
