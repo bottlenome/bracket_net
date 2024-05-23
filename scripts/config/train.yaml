@@ -18,7 +18,7 @@ params:
 Tmax: 0.25
 
 data:
-  magnification: 10
+  magnification: 1
 
 encoder:
   input: "m+"
