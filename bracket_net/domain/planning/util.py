@@ -6,11 +6,17 @@ import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
 
 
-def calc_accuracy(outputs, out_trajs, ignore_index):
+def calc_accuracy(path_map, out_trajs, ignore_index):
+    """Calculate accuracy of the path_map
+        Args: path_map: [batch, n_vocab, 32, 32]
+              out_trajs: [batch, 32, 32]
+              ignore_index: int
+        Returns: accuracy: float
+    """
     zero_mask = (out_trajs != 0)
     ignore_mask = (out_trajs != ignore_index)
     total = (ignore_mask*zero_mask).float().sum(dim=(1, 2)) + 0.1e-10
-    same = ((outputs.argmax(dim=1) == out_trajs)*ignore_mask*zero_mask).float().sum(dim=(1, 2))
+    same = ((path_map.argmax(dim=1) == out_trajs)*ignore_mask*zero_mask).float().sum(dim=(1, 2))
     return (same / total).mean()
 
 def calc_entropy(outputs):
@@ -20,21 +26,20 @@ def calc_entropy(outputs):
     outputs = nn.functional.softmax(outputs, dim=1)
     return -1 * (outputs * outputs.log()).sum(dim=1).mean()
 
-def continuity_loss(predicted_paths):
+def calc_continuity_loss(predicted_paths):
+    """Calculate continuity loss of the predicted_paths
+        Args: predicted_paths: [batch, n_vocab, 32, 32]
+        Returns: total_loss: float
+    """
     PATH_INDEX = 1
-    # predicted_pathsのshapeは [batch, height, width, n_vocab] を想定
-    # 経路の確率は predicted_paths[..., 1] で取得
-    paths = predicted_paths[..., PATH_INDEX]
+    paths = predicted_paths[:, 1, :, :]
 
-    # 縦方向の隣接
     vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
     vertical_loss = 1 - vertical_diff
 
-    # 横方向の隣接
     horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
     horizontal_loss = 1 - horizontal_diff
 
-    # ロスの合計
     total_loss = vertical_loss.sum() + horizontal_loss.sum()
     return total_loss
 
@@ -144,9 +149,11 @@ class CommonModule(L.LightningModule):
         map_designs, start_maps, goal_maps, out_trajs = train_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
         loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
+        continuity_loss = calc_continuity_loss(self.get_path_map(outputs))
         self.log("metrics/train_loss", loss, prog_bar=True)
+        self.log("metrics/continuity_loss", continuity_loss)
         self.log("metrics/entropy", entropy)
-        return loss + entropy_loss
+        return loss + continuity_loss + entropy_loss
 
     def get_path_map(self, outputs):
         """Get path map from outputs
@@ -190,6 +197,8 @@ class CommonModule(L.LightningModule):
         self.log("metrics/val_entropy", entropy)
 
         path_map = self.get_path_map(outputs)
+        continuity_loss = calc_continuity_loss(path_map)
+        self.log("metrics/val_continuity_loss", continuity_loss)
         accu = calc_accuracy(path_map, out_trajs, self.ignore_index)
         self.log("metrics/val_accu", accu)
 
@@ -204,7 +213,7 @@ class CommonModule(L.LightningModule):
 
         self.log_image(path_map, out_trajs, batch_idx)
 
-        return loss + entropy_loss
+        return loss + continuity_loss + entropy_loss
 
     def test_step(self, test_batch, batch_idx):
         map_designs, start_maps, goal_maps, out_trajs = test_batch
@@ -238,6 +247,9 @@ class CommonModule(L.LightningModule):
         self.log("metrics/test_entropy", entropy)
 
         path_map = self.get_path_map(outputs)
+        continuity_loss = calc_continuity_loss(path_map)
+        self.log("metrics/test_continuity_loss", continuity_loss)
+
         accu = calc_accuracy(path_map, out_trajs, self.ignore_index)
         self.log("metrics/test_accu", accu)
 
@@ -249,7 +261,7 @@ class CommonModule(L.LightningModule):
 
         self.log_image(path_map, out_trajs, batch_idx)
 
-        return loss + entropy_loss
+        return loss + continuity_loss + entropy_loss
 
 
 def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
