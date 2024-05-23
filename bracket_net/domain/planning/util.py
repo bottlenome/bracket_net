@@ -5,8 +5,26 @@ import torch
 import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
 
+def calc_continuity_accuracy(predicted_paths):
+    """Calculate continuity accuracy of the predicted_paths
+        Args: predicted_paths: [batch, n_vocab, 32, 32]
+        Returns: continuity_accuracy: float
+    """
+    PATH_INDEX = 1
+    paths = predicted_paths[:, PATH_INDEX, :, :]
 
-def calc_accuracy(path_map, out_trajs, ignore_index):
+    vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
+    vertical_continuity = (vertical_diff > 0.5).float()  # 連続しているセルは1、それ以外は0とする
+
+    horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
+    horizontal_continuity = (horizontal_diff > 0.5).float()  # 連続しているセルは1、それ以外は0とする
+
+    continuity_correct = vertical_continuity.sum() + horizontal_continuity.sum()
+    total = (vertical_continuity.numel() + horizontal_continuity.numel())
+
+    return continuity_correct / total
+
+def calc_path_accuracy(path_map, out_trajs, ignore_index):
     """Calculate accuracy of the path_map
         Args: path_map: [batch, n_vocab, 32, 32]
               out_trajs: [batch, 32, 32]
@@ -199,7 +217,9 @@ class CommonModule(L.LightningModule):
         path_map = self.get_path_map(outputs)
         continuity_loss = calc_continuity_loss(path_map)
         self.log("metrics/val_continuity_loss", continuity_loss)
-        accu = calc_accuracy(path_map, out_trajs, self.ignore_index)
+        accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
+        accu += calc_continuity_accuracy(path_map)
+        accu /= 2
         self.log("metrics/val_accu", accu)
 
         path = path_map.argmax(dim=1)
@@ -250,7 +270,9 @@ class CommonModule(L.LightningModule):
         continuity_loss = calc_continuity_loss(path_map)
         self.log("metrics/test_continuity_loss", continuity_loss)
 
-        accu = calc_accuracy(path_map, out_trajs, self.ignore_index)
+        accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
+        accu += calc_continuity_accuracy(path_map)
+        accu /= 2
         self.log("metrics/test_accu", accu)
 
         path = path_map.argmax(dim=1)
@@ -383,15 +405,19 @@ if __name__ == "__main__":
     out_trajs[1, 1:3] = 1
     outputs = torch.zeros(2, 6, 32, 32)
     outputs[:, 0, :, :] = 1
-    accu = calc_accuracy(outputs, out_trajs, 5)
+    accu = calc_path_accuracy(outputs, out_trajs, 5)
     assert(accu == 0.0)
     print(accu.item())
     outputs[:, 0, :, :] = 0
     outputs[0, 1, 0, 0] = 1
-    accu = calc_accuracy(outputs, out_trajs, 5)
+    accu = calc_path_accuracy(outputs, out_trajs, 5)
     assert(math.fabs(accu.item() - 1./32/2) < 0.00001)
     print(accu.item())
     outputs[0, 1, 0] = 1
-    accu = calc_accuracy(outputs, out_trajs, 5)
+    accu = calc_path_accuracy(outputs, out_trajs, 5)
     assert(accu == 0.5)
+    print(accu.item())
+
+    predicted_paths = torch.rand((2, 2, 32, 32))
+    accu = calc_continuity_accuracy(predicted_paths)
     print(accu.item())
