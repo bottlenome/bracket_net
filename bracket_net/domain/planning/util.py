@@ -52,6 +52,7 @@ def calc_continuity_loss(predicted_paths, true_paths):
     """
     PATH_INDEX = 1
     true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
+    predicted_paths = nn.functional.softmax(predicted_paths, dim=1)
     paths = predicted_paths[:, 1, :, :]
 
     vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
@@ -65,7 +66,7 @@ def calc_continuity_loss(predicted_paths, true_paths):
     total_loss = (vertical_loss.sum() + horizontal_loss.sum()) / (true_paths.sum() * 2)
     assert(total_loss >= 0)
     assert(total_loss <= 1)
-    return total_loss
+    return total_loss * 0.001
 
 class CommonModule(L.LightningModule):
     def __init__(self, config):
@@ -194,7 +195,7 @@ class CommonModule(L.LightningModule):
             AssertionError("Not implemented")
         return path_map
 
-    def log_image(self, path_map, out_trajs, batch_idx):
+    def log_image(self, path_map, out_trajs, batch_idx, name=""):
         if batch_idx != 0:
             return
         import wandb
@@ -202,13 +203,13 @@ class CommonModule(L.LightningModule):
         img = img * 255.
         img = img.cpu().numpy()
         self.logger.experiment.log({
-            "image/estimated_traj": wandb.Image(img)
+            f"image/{name}estimated_traj": wandb.Image(img)
         })
         img = out_trajs[0].detach()
         img = img * 255.
         img = img.cpu().numpy()
         self.logger.experiment.log({
-            "image/true_traj": wandb.Image(img)
+            f"image/{name}true_traj": wandb.Image(img)
         })
 
     def validation_step(self, val_batch, batch_idx):
@@ -287,7 +288,7 @@ class CommonModule(L.LightningModule):
                             map_designs, start_maps, goal_maps, path)
         self.log("metrics/test_p_opt", p_opt)
 
-        self.log_image(path_map, out_trajs, batch_idx)
+        self.log_image(path_map, out_trajs, batch_idx, "test_")
 
         return loss + continuity_loss + entropy_loss
 
@@ -339,7 +340,6 @@ class NaiveBase(CommonModule):
         src = src.permute(1, 0)
         # seq, batch -> seq, batch, d_vocab
         out = self.model(src)
-        out = nn.functional.softmax(out, dim=-1)
         # seq, batch, d_vocab -> batch, d_vocab, seq
         out = out.permute(1, 2, 0)
         return out
