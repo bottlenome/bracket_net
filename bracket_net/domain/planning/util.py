@@ -44,21 +44,27 @@ def calc_entropy(outputs):
     outputs = nn.functional.softmax(outputs, dim=1)
     return -1 * (outputs * outputs.log()).sum(dim=1).mean()
 
-def calc_continuity_loss(predicted_paths):
+def calc_continuity_loss(predicted_paths, true_paths):
     """Calculate continuity loss of the predicted_paths
         Args: predicted_paths: [batch, n_vocab, 32, 32]
+              true_paths: [batch, 1, 32, 32]
         Returns: total_loss: float
     """
     PATH_INDEX = 1
+    true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
     paths = predicted_paths[:, 1, :, :]
 
     vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
-    vertical_loss = 1 - vertical_diff
+    vertical_mask = true_paths[:, :-1, :]
+    vertical_loss = (1 - vertical_diff) * vertical_mask
 
     horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
-    horizontal_loss = 1 - horizontal_diff
+    horizontal_mask = true_paths[:, :, :-1]
+    horizontal_loss = (1 - horizontal_diff) * horizontal_mask
 
-    total_loss = vertical_loss.sum() + horizontal_loss.sum()
+    total_loss = (vertical_loss.sum() + horizontal_loss.sum()) / (true_paths.sum() * 2)
+    assert(total_loss >= 0)
+    assert(total_loss <= 1)
     return total_loss
 
 class CommonModule(L.LightningModule):
@@ -167,7 +173,7 @@ class CommonModule(L.LightningModule):
         map_designs, start_maps, goal_maps, out_trajs = train_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
         loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
-        continuity_loss = calc_continuity_loss(self.get_path_map(outputs))
+        continuity_loss = calc_continuity_loss(self.get_path_map(outputs), out_trajs)
         self.log("metrics/train_loss", loss, prog_bar=True)
         self.log("metrics/continuity_loss", continuity_loss)
         self.log("metrics/entropy", entropy)
@@ -215,7 +221,7 @@ class CommonModule(L.LightningModule):
         self.log("metrics/val_entropy", entropy)
 
         path_map = self.get_path_map(outputs)
-        continuity_loss = calc_continuity_loss(path_map)
+        continuity_loss = calc_continuity_loss(path_map, out_trajs)
         self.log("metrics/val_continuity_loss", continuity_loss)
         accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
         accu += calc_continuity_accuracy(path_map)
@@ -267,7 +273,7 @@ class CommonModule(L.LightningModule):
         self.log("metrics/test_entropy", entropy)
 
         path_map = self.get_path_map(outputs)
-        continuity_loss = calc_continuity_loss(path_map)
+        continuity_loss = calc_continuity_loss(path_map, out_trajs)
         self.log("metrics/test_continuity_loss", continuity_loss)
 
         accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
@@ -333,6 +339,7 @@ class NaiveBase(CommonModule):
         src = src.permute(1, 0)
         # seq, batch -> seq, batch, d_vocab
         out = self.model(src)
+        out = nn.functional.softmax(out, dim=-1)
         # seq, batch, d_vocab -> batch, d_vocab, seq
         out = out.permute(1, 2, 0)
         return out
