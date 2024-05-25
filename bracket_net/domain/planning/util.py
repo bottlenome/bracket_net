@@ -5,24 +5,47 @@ import torch
 import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
 
-def calc_continuity_accuracy(predicted_paths):
+def calc_continuity_accuracy(predicted_paths, true_paths):
     """Calculate continuity accuracy of the predicted_paths
         Args: predicted_paths: [batch, n_vocab, 32, 32]
-        Returns: continuity_accuracy: float
+              true_paths: [batch, 1, 32, 32]
+        Returns: accuracy: float
     """
     PATH_INDEX = 1
-    paths = predicted_paths[:, PATH_INDEX, :, :]
+    true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
+    predicted_paths = nn.functional.softmax(predicted_paths, dim=1)
+    paths = predicted_paths[:, 1, :, :]
 
-    vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
-    vertical_continuity = (vertical_diff > 0.5).float()  # 連続しているセルは1、それ以外は0とする
+    # 二値化して経路を得る（確率が0.5以上のセルを1、それ以外を0とする）
+    binary_paths = (paths > 0.5).float()
 
-    horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
-    horizontal_continuity = (horizontal_diff > 0.5).float()  # 連続しているセルは1、それ以外は0とする
+    # 縦方向の隣接
+    vertical_diff = (binary_paths[:, :-1, :] * binary_paths[:, 1:, :])
+    vertical_mask = true_paths[:, :-1, :]
+    vertical_continuity = vertical_diff * vertical_mask
 
-    continuity_correct = vertical_continuity.sum() + horizontal_continuity.sum()
-    total = (vertical_continuity.numel() + horizontal_continuity.numel())
+    # 横方向の隣接
+    horizontal_diff = (binary_paths[:, :, :-1] * binary_paths[:, :, 1:])
+    horizontal_mask = true_paths[:, :, :-1]
+    horizontal_continuity = horizontal_diff * horizontal_mask
 
-    return continuity_correct / total
+    # 左上から右下の斜め方向の隣接
+    diag1_diff = (binary_paths[:, :-1, :-1] * binary_paths[:, 1:, 1:])
+    diag1_mask = true_paths[:, :-1, :-1]
+    diag1_continuity = diag1_diff * diag1_mask
+
+    # 右上から左下の斜め方向の隣接
+    diag2_diff = (binary_paths[:, :-1, 1:] * binary_paths[:, 1:, :-1])
+    diag2_mask = true_paths[:, :-1, 1:]
+    diag2_continuity = diag2_diff * diag2_mask
+
+    # 正確性の計算
+    total_continuity = vertical_continuity.sum() + horizontal_continuity.sum() + diag1_continuity.sum() + diag2_continuity.sum()
+    total_possible = (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + + 0.1e-10)
+
+    accuracy = total_continuity / total_possible
+    return accuracy.item()
+
 
 def calc_path_accuracy(path_map, out_trajs, ignore_index):
     """Calculate accuracy of the path_map
@@ -63,7 +86,16 @@ def calc_continuity_loss(predicted_paths, true_paths):
     horizontal_mask = true_paths[:, :, :-1]
     horizontal_loss = (1 - horizontal_diff) * horizontal_mask
 
-    total_loss = (vertical_loss.sum() + horizontal_loss.sum()) / (true_paths.sum() * 2)
+    diag1_diff = (paths[:, :-1, :-1] * paths[:, 1:, 1:])
+    diag1_mask = true_paths[:, :-1, :-1]
+    diag1_loss = (1 - diag1_diff) * diag1_mask
+
+    diag2_diff = (paths[:, :-1, 1:] * paths[:, 1:, :-1])
+    diag2_mask = true_paths[:, :-1, 1:]
+    diag2_loss = (1 - diag2_diff) * diag2_mask
+
+    total_loss = vertical_loss.sum() + horizontal_loss.sum() + diag1_loss.sum() + diag2_loss.sum()
+    total_loss /= (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + 0.1e-10)
     assert(total_loss >= 0)
     assert(total_loss <= 1)
     return total_loss * 0.001
@@ -225,7 +257,7 @@ class CommonModule(L.LightningModule):
         continuity_loss = calc_continuity_loss(path_map, out_trajs)
         self.log("metrics/val_continuity_loss", continuity_loss)
         accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
-        accu += calc_continuity_accuracy(path_map)
+        accu += calc_continuity_accuracy(path_map, out_trajs)
         accu /= 2
         self.log("metrics/val_accu", accu)
 
@@ -278,7 +310,7 @@ class CommonModule(L.LightningModule):
         self.log("metrics/test_continuity_loss", continuity_loss)
 
         accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
-        accu += calc_continuity_accuracy(path_map)
+        accu += calc_continuity_accuracy(path_map, out_trajs)
         accu /= 2
         self.log("metrics/test_accu", accu)
 
@@ -426,5 +458,5 @@ if __name__ == "__main__":
     print(accu.item())
 
     predicted_paths = torch.rand((2, 2, 32, 32))
-    accu = calc_continuity_accuracy(predicted_paths)
+    accu = calc_continuity_accuracy(predicted_paths, out_trajs)
     print(accu.item())
