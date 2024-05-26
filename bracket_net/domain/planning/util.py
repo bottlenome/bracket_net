@@ -13,11 +13,8 @@ def calc_continuity_accuracy(predicted_paths, true_paths):
     """
     PATH_INDEX = 1
     true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
-    predicted_paths = nn.functional.softmax(predicted_paths, dim=1)
-    paths = predicted_paths[:, 1, :, :]
 
-    # 二値化して経路を得る（確率が0.5以上のセルを1、それ以外を0とする）
-    binary_paths = (paths > 0.5).float()
+    binary_paths = (predicted_paths.argmax(dim=PATH_INDEX) == 1).float()
 
     # 縦方向の隣接
     vertical_diff = (binary_paths[:, :-1, :] * binary_paths[:, 1:, :])
@@ -44,21 +41,27 @@ def calc_continuity_accuracy(predicted_paths, true_paths):
     total_possible = (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + + 0.1e-10)
 
     accuracy = total_continuity / total_possible
-    return accuracy.item()
+    assert(accuracy <= 1)
+    return accuracy
 
 
 def calc_path_accuracy(path_map, out_trajs, ignore_index):
     """Calculate accuracy of the path_map
         Args: path_map: [batch, n_vocab, 32, 32]
-              out_trajs: [batch, 32, 32]
+              out_trajs: [batch, 1, 32, 32]
               ignore_index: int
         Returns: accuracy: float
     """
+    if len(out_trajs.size()) == 4:
+        assert(out_trajs.size(1) == 1)
+        out_trajs = out_trajs.squeeze(1)
     zero_mask = (out_trajs != 0)
     ignore_mask = (out_trajs != ignore_index)
     total = (ignore_mask*zero_mask).float().sum(dim=(1, 2)) + 0.1e-10
     same = ((path_map.argmax(dim=1) == out_trajs)*ignore_mask*zero_mask).float().sum(dim=(1, 2))
-    return (same / total).mean()
+    accu = (same / total).mean()
+    assert(accu <= 1)
+    return accu
 
 def calc_entropy(outputs):
     """Calculate entropy of the outputs
@@ -256,9 +259,9 @@ class CommonModule(L.LightningModule):
         path_map = self.get_path_map(outputs)
         continuity_loss = calc_continuity_loss(path_map, out_trajs)
         self.log("metrics/val_continuity_loss", continuity_loss)
-        accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
-        accu += calc_continuity_accuracy(path_map, out_trajs)
-        accu /= 2
+        path_accu = calc_path_accuracy(path_map, out_trajs, self.ignore_index)
+        continuity_accu = calc_continuity_accuracy(path_map, out_trajs)
+        accu = (path_accu + continuity_accu) / 2
         self.log("metrics/val_accu", accu)
 
         path = path_map.argmax(dim=1)
@@ -457,6 +460,12 @@ if __name__ == "__main__":
     assert(accu == 0.5)
     print(accu.item())
 
-    predicted_paths = torch.rand((2, 2, 32, 32))
+    predicted_paths = torch.rand((2, 5, 32, 32))
+    out_trajs = torch.zeros(2, 1, 32, 32)
+    accu = calc_continuity_accuracy(predicted_paths, out_trajs)
+    print(accu.item())
+
+    predicted_paths[:, 1, 4] = 1
+    out_trajs[:, 0, 4] = 1
     accu = calc_continuity_accuracy(predicted_paths, out_trajs)
     print(accu.item())

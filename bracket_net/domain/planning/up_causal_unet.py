@@ -44,6 +44,7 @@ class Naive(CommonModule):
         super().__init__(config)
         self.model = StackedUnet(config, max_len=max_len)
         self.max_len = max_len
+        self.d_vocab = config.gpt.d_vocab + 1
 
 
     def forward(self, map_designs, start_maps, goal_maps, out_trajs):
