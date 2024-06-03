@@ -4,6 +4,7 @@ import pytorch_lightning as L
 import torch
 import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
+from .loss_accu import calc_obstacle_loss, calc_obstacle_accuracy
 
 def calc_continuity_accuracy(predicted_paths, true_paths):
     """Calculate continuity accuracy of the predicted_paths
@@ -41,7 +42,7 @@ def calc_continuity_accuracy(predicted_paths, true_paths):
     total_possible = (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + + 0.1e-10)
 
     accuracy = total_continuity / total_possible
-    assert(accuracy <= 1)
+    assert (accuracy <= 1)
     return accuracy
 
 
@@ -67,8 +68,8 @@ def calc_entropy(outputs):
     """Calculate entropy of the outputs
         Args: outputs: [batch, n_vocab, seq]
     """
-    outputs = nn.functional.softmax(outputs, dim=1)
-    return -1 * (outputs * outputs.log()).sum(dim=1).mean()
+    outputs = nn.functional.softmax(outputs, dim=1) + 1e-10
+    return (-1 * (outputs * outputs.log())).sum(dim=1).mean()
 
 def calc_continuity_loss(predicted_paths, true_paths):
     """Calculate continuity loss of the predicted_paths
@@ -322,6 +323,9 @@ class CommonModule(L.LightningModule):
         p_opt = get_p_opt(out_trajs,
                             map_designs, start_maps, goal_maps, path)
         self.log("metrics/test_p_opt", p_opt)
+
+        obstacle_accuracy = calc_obstacle_accuracy(path_map, map_designs)
+        self.log("metrics/obstacle_accuracy", obstacle_accuracy)
 
         self.log_image(path_map, out_trajs, batch_idx, "test_")
 
