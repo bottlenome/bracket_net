@@ -4,7 +4,9 @@ import pytorch_lightning as L
 import torch
 import torch.nn as nn
 from neural_astar.planner.astar import VanillaAstar
-from .loss_accu import calc_obstacle_loss, calc_obstacle_accuracy
+from .loss_accu import calc_obstacle_loss
+from .loss_accu import calc_start_loss, calc_goal_loss
+from .loss_accu import calc_solved_rate, calc_obstacle_accuracy
 
 def calc_continuity_accuracy(predicted_paths, true_paths):
     """Calculate continuity accuracy of the predicted_paths
@@ -102,7 +104,7 @@ def calc_continuity_loss(predicted_paths, true_paths):
     total_loss /= (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + 0.1e-10)
     assert(total_loss >= 0)
     assert(total_loss <= 1)
-    return total_loss * 0.001
+    return total_loss
 
 class CommonModule(L.LightningModule):
     def __init__(self, config):
@@ -210,11 +212,23 @@ class CommonModule(L.LightningModule):
         map_designs, start_maps, goal_maps, out_trajs = train_batch
         outputs = self.forward(map_designs, start_maps, goal_maps, out_trajs)
         loss, entropy, entropy_loss = self.loss(outputs, out_trajs, start_maps)
-        continuity_loss = calc_continuity_loss(self.get_path_map(outputs), out_trajs)
+        path_map = self.get_path_map(outputs)
+        continuity_loss = calc_continuity_loss(path_map, out_trajs)
+        obstacle_loss = calc_obstacle_loss(path_map, map_designs)
+        start_loss = calc_start_loss(path_map, start_maps)
+        goal_loss = calc_goal_loss(path_map, goal_maps)
         self.log("metrics/train_loss", loss, prog_bar=True)
         self.log("metrics/continuity_loss", continuity_loss)
         self.log("metrics/entropy", entropy)
-        return loss + continuity_loss + entropy_loss
+        self.log("metrics/obstacle_loss", obstacle_loss)
+        self.log("metrics/start_loss", start_loss)
+        self.log("metrics/goal_loss", goal_loss)
+        return (1 * loss +
+                0.001 * continuity_loss +
+                0.01 * entropy_loss +
+                0.01 * obstacle_loss +
+                0.01 * start_loss +
+                0.01 * goal_loss)
 
     def get_path_map(self, outputs):
         """Get path map from outputs
@@ -264,6 +278,12 @@ class CommonModule(L.LightningModule):
         continuity_accu = calc_continuity_accuracy(path_map, out_trajs)
         accu = (path_accu + continuity_accu) / 2
         self.log("metrics/val_accu", accu)
+
+        solved_rate = calc_solved_rate(path_map, map_designs)
+        self.log("metrics/val_solved_rate", solved_rate)
+
+        obstacle_accuracy = calc_obstacle_accuracy(path_map, map_designs)
+        self.log("metrics/val_obstacle_accuracy", obstacle_accuracy)
 
         path = path_map.argmax(dim=1)
         path = path.view(-1, 1, path.size(1), path.size(2))
@@ -324,8 +344,11 @@ class CommonModule(L.LightningModule):
                             map_designs, start_maps, goal_maps, path)
         self.log("metrics/test_p_opt", p_opt)
 
+        solved_rate = calc_solved_rate(path_map, map_designs)
+        self.log("metrics/test_solved_rate", solved_rate)
+
         obstacle_accuracy = calc_obstacle_accuracy(path_map, map_designs)
-        self.log("metrics/obstacle_accuracy", obstacle_accuracy)
+        self.log("metrics/test_obstacle_accuracy", obstacle_accuracy)
 
         self.log_image(path_map, out_trajs, batch_idx, "test_")
 

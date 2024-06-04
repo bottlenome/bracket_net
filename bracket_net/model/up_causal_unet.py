@@ -74,3 +74,11 @@ if __name__ == '__main__':
     x = torch.randn(10, 16, 1023)
     y = model(x)
     print(y.shape)
+    model = UpCasualUnet(16, 1023)
+    for i in range(len(model.down_layers)):
+        model.down_layers[i].conv.bias.data = torch.zeros_like(model.down_layers[i].conv.bias.data)
+        model.up_layers[i].deconv.bias.data = torch.zeros_like(model.up_layers[i].deconv.bias.data)
+    x = torch.zeros(10, 16, 1023)
+    # x[:, :, 0] = 1
+    y = model(x)
+    assert y[:, :, 1:].sum() == 0
