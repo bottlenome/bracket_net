@@ -9,13 +9,13 @@ class DownLayer(nn.Module):
         if out_channel is None:
             out_channel = 2 * n_channel
         self.conv = nn.Conv1d(n_channel, out_channel, kernel_size=2, stride=2)
-        self.norm = nn.BatchNorm1d(out_channel)
+        # self.norm = nn.BatchNorm1d(out_channel)
         self.activate = nn.LeakyReLU()
     
     def forward(self, x):
         skip = x
         x = self.conv(x)
-        x = self.norm(x)
+        # x = self.norm(x)
         x = self.activate(x)
         return x, skip
 
@@ -25,13 +25,13 @@ class UpLayer(nn.Module):
         if out_channel is None:
             out_channel = n_channel // 2
         self.deconv = nn.ConvTranspose1d(n_channel, out_channel, kernel_size=2, stride=2)
-        self.norm = nn.BatchNorm1d(out_channel)
+        # self.norm = nn.BatchNorm1d(out_channel)
         self.activate = nn.LeakyReLU()
         self.pad = nn.ConstantPad1d((1, 0), 0)
     
     def forward(self, x, skip):
         x = self.deconv(x)
-        x = self.norm(x)
+        # x = self.norm(x)
         x = self.activate(x)
         x = self.pad(x)[:, :, :-1]
         # [batch, channels, length], [batch, channels, length]
@@ -74,11 +74,12 @@ if __name__ == '__main__':
     x = torch.randn(10, 16, 1023)
     y = model(x)
     print(y.shape)
-    model = UpCasualUnet(16, 1023)
+    model = UpCasualUnet(1, 8)
     for i in range(len(model.down_layers)):
         model.down_layers[i].conv.bias.data = torch.zeros_like(model.down_layers[i].conv.bias.data)
         model.up_layers[i].deconv.bias.data = torch.zeros_like(model.up_layers[i].deconv.bias.data)
-    x = torch.zeros(10, 16, 1023)
-    # x[:, :, 0] = 1
+    x = torch.zeros(2, 1, 8)
+    x[:, :, -1] = 1
     y = model(x)
-    assert y[:, :, 1:].sum() == 0
+    print(y[:, :, :-1].sum())
+    assert y[:, :, :-1].sum() == 0
