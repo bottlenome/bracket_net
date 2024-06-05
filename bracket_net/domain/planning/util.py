@@ -7,6 +7,7 @@ from neural_astar.planner.astar import VanillaAstar
 from .loss_accu import calc_obstacle_loss
 from .loss_accu import calc_start_loss, calc_goal_loss
 from .loss_accu import calc_solved_rate, calc_obstacle_accuracy
+from .loss_accu import calc_continuity_loss
 
 def calc_continuity_accuracy(predicted_paths, true_paths):
     """Calculate continuity accuracy of the predicted_paths
@@ -73,38 +74,7 @@ def calc_entropy(outputs):
     outputs = nn.functional.softmax(outputs, dim=1) + 1e-10
     return (-1 * (outputs * outputs.log())).sum(dim=1).mean()
 
-def calc_continuity_loss(predicted_paths, true_paths):
-    """Calculate continuity loss of the predicted_paths
-        Args: predicted_paths: [batch, n_vocab, 32, 32]
-              true_paths: [batch, 1, 32, 32]
-        Returns: total_loss: float
-    """
-    PATH_INDEX = 1
-    true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
-    predicted_paths = nn.functional.softmax(predicted_paths, dim=1)
-    paths = predicted_paths[:, 1, :, :]
 
-    vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
-    vertical_mask = true_paths[:, :-1, :]
-    vertical_loss = (1 - vertical_diff) * vertical_mask
-
-    horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
-    horizontal_mask = true_paths[:, :, :-1]
-    horizontal_loss = (1 - horizontal_diff) * horizontal_mask
-
-    diag1_diff = (paths[:, :-1, :-1] * paths[:, 1:, 1:])
-    diag1_mask = true_paths[:, :-1, :-1]
-    diag1_loss = (1 - diag1_diff) * diag1_mask
-
-    diag2_diff = (paths[:, :-1, 1:] * paths[:, 1:, :-1])
-    diag2_mask = true_paths[:, :-1, 1:]
-    diag2_loss = (1 - diag2_diff) * diag2_mask
-
-    total_loss = vertical_loss.sum() + horizontal_loss.sum() + diag1_loss.sum() + diag2_loss.sum()
-    total_loss /= (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + 0.1e-10)
-    assert(total_loss >= 0)
-    assert(total_loss <= 1)
-    return total_loss
 
 class CommonModule(L.LightningModule):
     def __init__(self, config):

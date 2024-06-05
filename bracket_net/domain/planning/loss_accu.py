@@ -1,5 +1,37 @@
 import torch.nn as nn
 
+def calc_continuity_loss(predicted_paths, true_paths):
+    """Calculate continuity loss of the predicted_paths
+        Args: predicted_paths: [batch, n_vocab, 32, 32]
+              true_paths: [batch, 1, 32, 32]
+        Returns: total_loss: float
+    """
+    PATH_INDEX = 1
+    true_paths = true_paths.view(true_paths.size(0), true_paths.size(2), true_paths.size(3))
+    predicted_paths = nn.functional.softmax(predicted_paths, dim=1)
+    paths = predicted_paths[:, 1, :, :]
+
+    vertical_diff = (paths[:, :-1, :] * paths[:, 1:, :])
+    vertical_mask = true_paths[:, :-1, :]
+    vertical_loss = (1 - vertical_diff) * vertical_mask
+
+    horizontal_diff = (paths[:, :, :-1] * paths[:, :, 1:])
+    horizontal_mask = true_paths[:, :, :-1]
+    horizontal_loss = (1 - horizontal_diff) * horizontal_mask
+
+    diag1_diff = (paths[:, :-1, :-1] * paths[:, 1:, 1:])
+    diag1_mask = true_paths[:, :-1, :-1]
+    diag1_loss = (1 - diag1_diff) * diag1_mask
+
+    diag2_diff = (paths[:, :-1, 1:] * paths[:, 1:, :-1])
+    diag2_mask = true_paths[:, :-1, 1:]
+    diag2_loss = (1 - diag2_diff) * diag2_mask
+
+    total_loss = vertical_loss.sum() + horizontal_loss.sum() + diag1_loss.sum() + diag2_loss.sum()
+    total_loss /= (vertical_mask.sum() + horizontal_mask.sum() + diag1_mask.sum() + diag2_mask.sum() + 0.1e-10)
+    assert(total_loss >= 0)
+    assert(total_loss <= 1)
+    return total_loss
 
 def calc_obstacle_loss(predicted_paths, obstacle_map):
     """
@@ -157,3 +189,21 @@ if __name__ == '__main__':
     goal_loss = calc_goal_loss(predicted_paths, goal_map)
     print(goal_loss)
     assert (goal_loss < 1e-10)
+
+    predicted_paths = torch.zeros(2, 6, 32, 32)
+    predicted_paths[:, 1, 1:, 10] = 100
+    predicted_paths[:, 0, 0, :10] = 100
+    predicted_paths[:, 0, 0, 11:] = 100
+    predicted_paths[:, 2:, 0, :10] = 100
+    predicted_paths[:, 2:, 0, :11] = 100
+    true_paths = torch.zeros(2, 1, 32, 32)
+    true_paths[:, :, 1:, 10] = 1
+    continuity_loss = calc_continuity_loss(predicted_paths, true_paths)
+    print(continuity_loss)
+
+    predicted_paths[:, 1, 10:15, 10] = 0
+    predicted_paths[:, 0, 10:15, 10] = 100
+    predicted_paths[:, 2:, 10:15, 10] = 100
+    continuity_loss2 = calc_continuity_loss(predicted_paths, true_paths)
+    print(continuity_loss2)
+    assert continuity_loss2 > continuity_loss
