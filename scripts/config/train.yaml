@@ -19,6 +19,7 @@ Tmax: 0.25
 
 data:
   magnification: 10
+  size_max: 800
 
 encoder:
   input: "m+"
