@@ -33,9 +33,10 @@ def create_dataloader(
     batch_size: int,
     num_starts: int = 1,
     shuffle: bool = False,
-    magnification: int = 1
+    magnification: int = 1,
+    size_max: int = 800
 ) -> data.DataLoader:
-    dataset = AugumentedMazeDataset(filename, split, num_starts, magnification)
+    dataset = AugumentedMazeDataset(filename, split, num_starts, magnification, size_max)
     return data.DataLoader(
         dataset, batch_size=batch_size, shuffle=shuffle, num_workers=2,
         pin_memory=True
@@ -44,9 +45,15 @@ def create_dataloader(
 
 # Apply masks to the correct answers in the data set to augment the data.
 class AugumentedMazeDataset(data.Dataset):
-    def __init__(self, filename, split, num_starts=1, magnification=1):
+    def __init__(self, filename, split, num_starts=1, magnification=1, size=800):
         super().__init__()
         self.dataset = MazeDataset(filename, split, num_starts=num_starts)
+        if size <= len(self.dataset):
+            self.dataset.map_designs = self.dataset.map_designs[:size]
+            self.dataset.goal_maps = self.dataset.goal_maps[:size]
+            self.dataset.opt_policies = self.dataset.opt_policies[:size]
+            self.dataset.opt_dists = self.dataset.opt_dists[:size]
+
         if split == "test":
             self.magnification = 1
         else:
@@ -86,16 +93,19 @@ def main(config):
     train_loader = create_dataloader(
         config.dataset + ".npz", "train",
         config.params.batch_size, shuffle=True,
-        magnification=config.data.magnification
+        magnification=config.data.magnification,
+        size_max=config.data.size_max
     )
     val_loader = create_dataloader(
         config.dataset + ".npz", "valid",
         config.params.batch_size, shuffle=False,
-        magnification=config.data.magnification
+        magnification=config.data.magnification,
+        size_max=config.data.size_max
     )
     test_loader = create_dataloader(
         config.dataset + ".npz", "test",
-        config.params.batch_size, shuffle=False
+        config.params.batch_size, shuffle=False,
+        size_max=config.data.size_max
     )
 
     checkpoint_callback = ModelCheckpoint(
