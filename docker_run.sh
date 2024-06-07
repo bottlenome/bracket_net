@@ -13,11 +13,10 @@ else
   EXEC_PATH=`pwd`
   USER_DIR="/home/$USER"
   DOCKER_USER="-u $(id -u $USER):$(id -g $USER)"
-  DOCKER_OPTS="-it"
+  DOCKER_OPTS="-it --gpus all "
 fi
 
 docker run ${DOCKER_OPTS} \
-           --gpus all \
            -w ${EXEC_PATH} \
            --shm-size=2gb \
            -h bn_docker \
