@@ -1,7 +1,7 @@
-#!/bin/bash
+#!/bin/bash -eu
 
 EXEC_PATH=`pwd`
-COMMAND=bash
+COMMAND=${1:-bash}
 
 docker run -it --gpus all \
                -w ${EXEC_PATH} \
