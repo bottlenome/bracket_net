@@ -22,7 +22,7 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Pull Docker image
-        run: docker pull ${{ secrets.DOCKER_USERNAME }}/bracket_net:latest
+      run: docker pull ${{ secrets.DOCKER_USERNAME }}/bracket_net:latest
 
     - name: Unit tests
       run: ./docker_run.sh test/unittest.sh
