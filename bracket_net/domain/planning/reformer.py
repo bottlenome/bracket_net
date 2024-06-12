@@ -24,7 +24,7 @@ class ReformerInterface(nn.Module):
             causal=True
         )
         self.unembed = torch.nn.Linear(d_model, d_vocab)
-    
+
     def forward(self, src):
         src = self.embed(src)
         src = self.pos_encoder(src)
@@ -49,11 +49,11 @@ if __name__ == '__main__':
             self.lr = 0.1
             self.batch_size = 10
             self.enable_entropy_loss = False
-    
+
     class Model:
         def __init__(self):
             self.type = "1d"
-    
+
     class GPTParam:
         def __init__(self):
             self.d_vocab = 5
