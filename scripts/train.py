@@ -21,6 +21,7 @@ import bracket_net.domain.planning.gpt as gpt
 import bracket_net.domain.planning.bracket_net as bracket_net
 import bracket_net.domain.planning.sample as sample
 import bracket_net.domain.planning.up_causal_unet as up_causual_unet
+import bracket_net.domain.planning.reformer as reformer
 
 import random
 import numpy
@@ -141,6 +142,10 @@ def main(config):
         name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
     elif config.model.name == "up-causual-naive":
         module = up_causual_unet.Naive(config)
+        name = f"{config.model.name}-{config.gpt.d_model}"
+        name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
+    elif config.model.name == "reformer-naive":
+        module = reformer.Naive(config)
         name = f"{config.model.name}-{config.gpt.d_model}"
         name += f"-{config.gpt.n_head}-{config.gpt.num_layers}"
     elif config.model.name == "sample":

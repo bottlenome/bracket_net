@@ -373,10 +373,14 @@ class NaiveBase(CommonModule):
             # batch, seq -> seq, batch
             src = src.permute(1, 0)
         # seq, batch -> seq, batch, d_vocab
+        # batch, seq -> batch, seq, d_vocab
         out = self.model(src)
         if self.seq_batch_convert:
-            # seq, batch, d_vocab -> batch, seq, d_vocab
+            # seq, batch, d_vocab -> batch, d_vocab, seq
             out = out.permute(1, 2, 0)
+        else:
+            # batch, seq, d_vocab -> batch, d_vocab, seq
+            out = out.permute(0, 2, 1)
         return out
 
 
