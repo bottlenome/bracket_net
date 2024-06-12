@@ -337,7 +337,7 @@ def get_p_opt(out_trajs, map_designs, start_maps, goal_maps, paths):
 
 
 class NaiveBase(CommonModule):
-    def __init__(self, config, Model):
+    def __init__(self, config, Model, seq_batch_convert=True):
         super().__init__(config)
         self.d_vocab = config.gpt.d_vocab
         self.d_model = config.gpt.d_model
@@ -348,6 +348,7 @@ class NaiveBase(CommonModule):
                            n_head=config.gpt.n_head,
                            num_layers=config.gpt.num_layers,
                            dropout=config.gpt.dropout)
+        self.seq_batch_convert = seq_batch_convert
 
     def forward(self, map_designs, start_maps, goal_maps, out_trajs):
         # batch, 1, 32, 32 -> batch, 32 * 32
@@ -368,12 +369,18 @@ class NaiveBase(CommonModule):
                             self.estimate_start], dim=1)
         # float to int
         src = src.to(torch.int64)
-        # batch, seq -> seq, batch
-        src = src.permute(1, 0)
+        if self.seq_batch_convert:
+            # batch, seq -> seq, batch
+            src = src.permute(1, 0)
         # seq, batch -> seq, batch, d_vocab
+        # batch, seq -> batch, seq, d_vocab
         out = self.model(src)
-        # seq, batch, d_vocab -> batch, d_vocab, seq
-        out = out.permute(1, 2, 0)
+        if self.seq_batch_convert:
+            # seq, batch, d_vocab -> batch, d_vocab, seq
+            out = out.permute(1, 2, 0)
+        else:
+            # batch, seq, d_vocab -> batch, d_vocab, seq
+            out = out.permute(0, 2, 1)
         return out
 
 
