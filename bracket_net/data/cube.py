@@ -1,12 +1,9 @@
-# from pickletools import uint8
-import re
-from socket import TIPC_DEST_DROPPABLE
-from cube.face import FaceCube
-from cube.defs import N_MOVE
-from cube.enums import Move
-from cube import cubie
-from cube.coord import CoordCube
-import cube.moves as mv
+from .cube_model.face import FaceCube
+from .cube_model.defs import N_MOVE
+from .cube_model.enums import Move
+from .cube_model import cubie
+from .cube_model.coord import CoordCube
+from .cube_model import moves as mv
 
 import torch
 from torch.utils.data import Dataset
@@ -340,7 +337,7 @@ def AllLoader(val_test_rate=0.1, batch_size=32, size=None):
     return train_dataloader, val_dataloader, test_dataloader
 
 
-def create_dataloder(loder_name, val_test_rate, batch_size, size=None):
+def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
     if loder_name == "NOPLoader":
         return NOPLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "StateLoader":
@@ -370,27 +367,29 @@ if __name__ == '__main__':
 
     """
     print("NOPLoader")
-    train_dataloader, val_dataloader, test_dataloader = create_dataloder("NOPLoader", 0.1, 10)
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("NOPLoader", 0.1, 10)
     for i in train_dataloader:
         print("src, tgt", len(i))
         print("src.shape", i[0].shape)
         print("tgt.shape", i[1].shape)
         print("src[0]", i[0][0])
+        print("src[0] max:", i[0][0].max())
         print("tgt[0]", i[1][0])
         break
 
     print("StateLoader")
-    train_dataloader, val_dataloader, test_dataloader = create_dataloder("StateLoader", 0.1, 10)
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("StateLoader", 0.1, 10)
     for i in train_dataloader:
         print("src, tgt", len(i))
         print("src.shape", i[0].shape)
         print("tgt.shape", i[1].shape)
         print("src[0]", i[0][0])
+        print("src[0] max:", i[0][0].max())
         print("tgt[0]", i[1][0])
         break
 
     print("NumLoader")
-    train_dataloader, val_dataloader, test_dataloader = create_dataloder("NumLoader", 0.1, 10, size=1000)
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("NumLoader", 0.1, 10, size=1000)
     j = 0
     for i in train_dataloader:
         if j == 0:
@@ -398,6 +397,7 @@ if __name__ == '__main__':
             print("src.shape", i[0].shape)
             print("tgt.shape", i[1].shape)
             print("src[0]", i[0][0])
+            print("src[0] max:", i[0][0].max())
             print("src[-1]", i[0][0, -1])
             print("tgt[0]", i[1][0])
             j += 1
@@ -408,22 +408,24 @@ if __name__ == '__main__':
             print("src.shape", i[0].shape)
             print("tgt.shape", i[1].shape)
             print("src[0]", i[0][0])
+            print("src[0] max:", i[0][0].max())
             print("tgt[0]", i[1][0])
             j += 1
     print(get_solved_state())
 
     print("StateLoader2")
-    train_dataloader, val_dataloader, test_dataloader = create_dataloder("StateLoader2", 0.1, 10, size=1000)
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("StateLoader2", 0.1, 10, size=1000)
     for i in train_dataloader:
         print("src, tgt", len(i))
         print("src.shape", i[0].shape)
         print("tgt.shape", i[1].shape)
         print("src[0]", i[0][0])
+        print("src[0] max:", i[0][0].max())
         print("tgt[0]", i[1][0])
         break
 
     print("AllLoader")
-    train_dataloader, val_dataloader, test_dataloader = create_dataloder("AllLoader", 0.1, 10, size=1000)
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("AllLoader", 0.1, 10, size=1000)
     zero_rate = 0.
     TGT = 1
     MOVES = 1
@@ -435,6 +437,7 @@ if __name__ == '__main__':
             print("tgt[0].shape", i[TGT][0].shape)
             print("tgt[1].shape", i[TGT][MOVES].shape)
             print("src[0]", i[0][0])
+            print("src[0] max:", i[0][0].max())
             print("tgt[0][0]", i[TGT][0][0])
             print("tgt[1][0]", i[TGT][MOVES][0])
             print("zero_rate", zero_rate)

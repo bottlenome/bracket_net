@@ -162,16 +162,13 @@ class LieFuncVectorCondition(LieFuncBase):
 
 
 class LieFucWithFixedContext2DWeightOptimized(nn.Module):
-    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+    def __init__(self, bracket, d_model, n_head, dim, seq_max=4100):
         super().__init__()
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.seq_len = seq_len
-        self.problem_len = 1 + seq_len * 3 + 1
-        self.answer_len = seq_len + 2
-        self.seq_max = self.problem_len + self.answer_len
+        self.seq_max = seq_max
         self.weight = nn.Parameter(
             torch.randn(n_head, self.seq_max, self.seq_max))
         self.activate = nn.ReLU()
@@ -194,16 +191,12 @@ class LieFucWithFixedContext2DWeightOptimized(nn.Module):
         return y
 
 class LieFucWithFixedContext1DWeightOptimized(nn.Module):
-    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+    def __init__(self, bracket, d_model, n_head, dim, seq_max=4100):
         super().__init__()
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.seq_len = seq_len
-        self.problem_len = 1 + seq_len * 3 + 1
-        self.answer_len = seq_len + 2
-        seq_max = self.problem_len + self.answer_len
         self.weight = nn.Parameter(torch.randn(n_head, seq_max))
         self.activate = nn.ReLU()
         self.norm = nn.LayerNorm(d_model)
@@ -263,16 +256,12 @@ class LieFucWithBracketWeightOptimized(nn.Module):
         return c
 
 class LieFucWithFixedContextWeightOptimized(nn.Module):
-    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+    def __init__(self, bracket, d_model, n_head, dim, seq_max=4100):
         super().__init__()
         self.bracket = bracket
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.seq_len = seq_len
-        self.problem_len = 1 + seq_len * 3 + 1
-        self.answer_len = seq_len + 2
-        seq_max = self.problem_len + self.answer_len
         self.weight = nn.Parameter(
             torch.randn(dim, seq_max, seq_max))
         self.activate = nn.ReLU()
@@ -290,15 +279,12 @@ class LieFucWithFixedContextWeightOptimized(nn.Module):
 
 
 class LieFuncBeamSearchOptimized(nn.Module):
-    def __init__(self, bracket, d_model, n_head, dim, seq_len=1024):
+    def __init__(self, bracket, d_model, n_head, dim, seq_max=4100):
         super().__init__()
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
-        self.seq_len = seq_len
-        self.problem_len = 1 + seq_len * 3 + 1
-        self.answer_len = seq_len + 2
-        self.seq_max = self.problem_len + self.answer_len
+        self.seq_max = seq_max
         self.weight = nn.Parameter(
             torch.randn(n_head, self.seq_max, self.seq_max))
         self.activate = nn.ReLU()
@@ -489,7 +475,7 @@ class LieFuncBeamSearchOptimized(nn.Module):
 
 
 class LieFuncFactory():
-    def __init__(self, bracket, d_model, n_head, dim):
+    def __init__(self, bracket, d_model, n_head, dim, seq_max=4100):
         self.map = {
                 "base": LieFuncBasic,
                 "base_optimized": LieFuncBasicOptimized,
@@ -510,11 +496,12 @@ class LieFuncFactory():
         self.d_model = d_model
         self.n_head = n_head
         self.dim = dim
+        self.seq_max = seq_max
 
     def get(self, mode):
         try:
             return self.map[mode](self.bracket, self.d_model,
-                                  self.n_head, self.dim)
+                                  self.n_head, self.dim, seq_max=self.seq_max)
         except KeyError:
             raise NotImplementedError(f"mode {mode} is not implemented")
 

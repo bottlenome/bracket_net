@@ -1,0 +1,28 @@
+project: "cube"
+experiment_name: "default"
+
+defaults:
+  - model: "bracket-naive"
+
+seed: 1234
+logdir: "runs"
+params:
+  d_vocab: 16
+  d_model: 128
+  n_head: 4
+  num_layers: 6
+  dropout: 0.0
+  batch_size: 1024
+  num_epochs: 50
+  lr: 0.001
+  enable_entropy_loss: False
+
+data:
+  name: "NOPLoader"
+  val_test_rate: 0.1
+  seq_max: 40
+  size_max: null
+
+hydra:
+  job:
+    chdir: False
