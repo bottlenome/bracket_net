@@ -4,7 +4,7 @@ from .lie_func import LieFuncFactory
 
 
 class BracketFunc(nn.Module):
-    def __init__(self, d_model=128, n_head=4, mode="base"):
+    def __init__(self, d_model=128, n_head=4, mode="base", seq_max=4100):
         super().__init__()
         assert(d_model % n_head == 0)
 
@@ -47,7 +47,7 @@ class BracketFunc(nn.Module):
                 raise ValueError("Invalid input shape")
         """
         self.bracket = bracket
-        self.lie_func = LieFuncFactory(bracket, d_model, n_head, dim).get(mode)
+        self.lie_func = LieFuncFactory(bracket, d_model, n_head, dim, seq_max).get(mode)
 
         self.d_model = d_model
         self.n_head = n_head
@@ -76,10 +76,10 @@ class BracketNet(nn.Module):
     def __init__(self, d_vocab, pos_encoder,
                  d_model=128, n_head=4,
                  num_layers=6, dropout=0.0,
-                 embed=None, mode="base"):
+                 embed=None, mode="base", seq_max=4100):
         super().__init__()
         self.d_vocab = d_vocab
-        self.d_model = d_vocab
+        self.d_model = d_model
         self.n_head = n_head
         self.dim = int(d_vocab / n_head)
         # self.activate = nn.GELU()
@@ -94,7 +94,7 @@ class BracketNet(nn.Module):
         self.bracket_funcs = nn.Sequential()
         for i in range(num_layers):
             self.bracket_funcs.add_module(
-                f"bracket_func{i}", BracketFunc(d_model, n_head, mode))
+                f"bracket_func{i}", BracketFunc(d_model, n_head, mode, seq_max))
         self.unembed = torch.nn.Linear(d_model, d_vocab)
 
     def forward(self, src: torch.Tensor) -> torch.Tensor:

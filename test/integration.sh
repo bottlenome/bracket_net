@@ -26,5 +26,9 @@ model=reformer-naive params.batch_size=${BATCH_SIZE} gpt.num_layers=${NUM_LAYERS
 gpt.n_head=1 gpt.d_model=16 \
 data.magnification=1 data.size_max=${BATCH_SIZE} params.num_epochs=${EPOCHS}
 
+python -m scripts.train_cube params.batch_size=1024 params.num_epochs=${EPOCHS} \
+params.num_layers=${NUM_LAYERS} params.d_model=16 params.n_head=1 \
+data.size_max=1024
+
 
 echo "PASS"

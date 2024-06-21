@@ -17,6 +17,9 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
+        if self.pe.size(0) < x.size(0):
+            print(x.size(0), self.pe.size(0))
+            raise ValueError("input sequence length is longer than the max_len")
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
 
