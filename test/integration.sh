@@ -30,5 +30,9 @@ python -m scripts.train_cube params.batch_size=1024 params.num_epochs=${EPOCHS} 
 params.num_layers=${NUM_LAYERS} params.d_model=16 params.n_head=1 \
 data.size_max=1024
 
+python -m scripts.train_cube params.batch_size=1024 params.num_epochs=${EPOCHS} \
+params.num_layers=${NUM_LAYERS} params.d_model=16 params.n_head=1 \
+model.name=up-causal-naive \
+data.size_max=1024
 
 echo "PASS"

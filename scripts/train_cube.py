@@ -18,6 +18,9 @@ def main(config):
     if config.model.name == "bracket-naive":
         from bracket_net.domain.cube.bracket_net import Naive
         model = Naive(config)
+    elif config.model.name == "up-causal-naive":
+        from bracket_net.domain.cube.up_causal_unet import Naive
+        model = Naive(config)
     else:
         raise ValueError(f"Unknown model name {config.model.name}")
 
