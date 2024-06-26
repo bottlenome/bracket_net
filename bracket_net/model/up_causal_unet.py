@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 
 
@@ -67,6 +68,38 @@ class UpCasualUnet(nn.Module):
         for layer, skip in zip(self.up_layers, reversed(skips)):
             x = layer(x, skip)
         return x
+
+
+class StackedUnet(nn.Module):
+    def __init__(self, d_vocab, d_model, num_layers, max_len=4100):
+        super().__init__()
+        self.embed = nn.Embedding(d_vocab + 1, d_model)
+        self.max_len = max_len
+        self.unets = nn.ModuleList()
+        for i in range(num_layers):
+            self.unets.add_module(
+                f'up_causal_unet_{i}',
+                UpCasualUnet(d_model, max_len))
+        self.unembed = torch.nn.Linear(d_model, d_vocab + 1)
+
+    def forward(self, x):
+        len = x.size(1)
+        x = self.embed(x)
+        # [batch, seq, dim] -> [batch, dim, seq]
+        x = x.permute(0, 2, 1)
+        for net in self.unets:
+            if len < self.max_len:
+                x = net(F.pad(x[:, :, :len], (0, self.max_len - len)))
+            else:
+                x = net(x[:, :, :self.max_len])
+        x = x[:, :, :self.max_len]
+        # [batch, dim, seq] -> [batch, seq, dim]
+        x = x.permute(0, 2, 1)
+        x = self.unembed(x)
+        # [batch, seq, dim] -> [batch, dim, seq]
+        x = x.permute(0, 2, 1)
+        return x
+
 
 if __name__ == '__main__':
     model = UpCasualUnet(16, 1023)
