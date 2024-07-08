@@ -19,3 +19,4 @@ RUN pip install .
 RUN pip install pytorch_memlab
 RUN pip install torchdata
 RUN pip install reformer_pytorch
+RUN pip install dopamine-rl

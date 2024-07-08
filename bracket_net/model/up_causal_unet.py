@@ -71,20 +71,23 @@ class UpCasualUnet(nn.Module):
 
 
 class StackedUnet(nn.Module):
-    def __init__(self, d_vocab, d_model, num_layers, max_len=4100):
+    def __init__(self, d_vocab, d_model, num_layers, max_len=4100, enable_embed=True):
         super().__init__()
-        self.embed = nn.Embedding(d_vocab + 1, d_model)
+        self.enable_embed = enable_embed
+        if enable_embed:
+            self.embed = nn.Embedding(d_vocab + 1, d_model)
+            self.unembed = torch.nn.Linear(d_model, d_vocab + 1)
         self.max_len = max_len
         self.unets = nn.ModuleList()
         for i in range(num_layers):
             self.unets.add_module(
                 f'up_causal_unet_{i}',
                 UpCasualUnet(d_model, max_len))
-        self.unembed = torch.nn.Linear(d_model, d_vocab + 1)
 
     def forward(self, x):
         len = x.size(1)
-        x = self.embed(x)
+        if self.enable_embed:
+            x = self.embed(x)
         # [batch, seq, dim] -> [batch, dim, seq]
         x = x.permute(0, 2, 1)
         for net in self.unets:
@@ -95,9 +98,10 @@ class StackedUnet(nn.Module):
         x = x[:, :, :self.max_len]
         # [batch, dim, seq] -> [batch, seq, dim]
         x = x.permute(0, 2, 1)
-        x = self.unembed(x)
-        # [batch, seq, dim] -> [batch, dim, seq]
-        x = x.permute(0, 2, 1)
+        if self.enable_embed:
+            x = self.unembed(x)
+            # [batch, seq, dim] -> [batch, dim, seq]
+            x = x.permute(0, 2, 1)
         return x
 
 
