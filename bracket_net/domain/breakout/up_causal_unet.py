@@ -73,34 +73,35 @@ class Decision(nn.Module):
                                    config.params.num_layers,
                                    max_len=config.data.seq_max,
                                    enable_embed=False)
+        self.layer_norm = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, config.params.d_action, bias=False)
 
-    def forward(self, states, actions, rtgs, timesteps):
+    def forward(self, rtgs, states, actions, timesteps):
         batch_size = states.size(0)
         seq_len = states.size(1)
+
+        rtgs = self.rtgs_embedding(rtgs)
         states = self.state_embedding(states)
         actions = self.action_embedding(actions)
-        rtgs = self.rtgs_embedding(rtgs)
 
+        rtgs = rtgs.view(batch_size, seq_len, 1, -1)
         states = states.view(batch_size, seq_len, 1, -1)
         actions = actions.view(batch_size, seq_len, 1, -1)
-        rtgs = rtgs.view(batch_size, seq_len, 1, -1)
-        tokens = torch.cat([states, actions, rtgs], dim=2)
+
+        tokens = torch.cat([rtgs, states, actions], dim=2)
         tokens = tokens.view(batch_size, 3*seq_len, -1)
+
         x = self.positional_embedding(tokens, timesteps)
         x = self.dropout(x)
         y = self.decoder(x)
+        y = self.layer_norm(y)
         logits = self.head(y)
         return logits[:, 1::3]
 
 class DecisionLike(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
-        self.model = StackedUnet(config.params.d_vocab,
-                                 config.params.d_model,
-                                 config.params.num_layers,
-                                 max_len=config.data.seq_max,
-                                 enable_embed=False)
+        self.model = Decision(config)
         self.lr = config.params.lr
         self.seq_max = config.data.seq_max
 
@@ -115,33 +116,33 @@ class DecisionLike(pl.LightningModule):
         return torch.optim.AdamW(self.parameters(), lr=0.001)
 
     def training_step(self, batch, batch_idx):
-        # # concat src and tgt
-        # x = torch.cat(batch, dim=1)
-        # y_hat = self(x)
-        # # padding x by seq_max
-        # x_pad = torch.cat([x[:, 1:], torch.zeros_like(x[:, 0:1+y_hat.size(-1) - x.size(-1)])-100], dim=1)
-        # loss = self.loss_fn(y_hat, x_pad)
-        # self.log('metrics/train/loss', loss, prog_bar=True)
-        # return loss
-        pass
+        states, actions, rtgs, timesteps = batch
+        y = self.model(rtgs, states, actions, timesteps)
+        y = y[:, :actions.size(1)]
+        y_hat = y.permute(0, 2, 1)
+        actions = actions.squeeze(2)
+        loss = self.loss_fn(y_hat, actions)
+        self.log('metrics/train/loss', loss, prog_bar=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        # x = torch.cat(batch, dim=1)
-        # y_hat = self(x)
-        # x_pad = torch.cat([x[:, 1:], torch.zeros_like(x[:, 0:1+y_hat.size(-1) - x.size(-1)])-100], dim=1)
-        # loss = self.loss_fn(y_hat, x_pad)
-        # self.log('metrics/val/loss', loss, prog_bar=True)
-        # return loss
-        pass
+        states, actions, rtgs, timesteps = batch
+        y = self.model(rtgs, states, actions, timesteps)
+        y = y[:, :actions.size(1)]
+        y_hat = y.permute(0, 2, 1)
+        actions = actions.squeeze(2)
+        loss = self.loss_fn(y_hat, actions)
+        return loss
 
     def test_step(self, batch, batch_idx):
-        # x = torch.cat(batch, dim=1)
-        # y_hat = self(x)
-        # x_pad = torch.cat([x[:, 1:], torch.zeros_like(x[:, 0:1+y_hat.size(-1) - x.size(-1)])-100], dim=1)
-        # loss = self.loss_fn(y_hat, x_pad)
-        # self.log('metrics/test/loss', loss, prog_bar=False)
-        # return loss
-        pass
+        states, actions, rtgs, timesteps = batch
+        y = self.model(rtgs, states, actions, timesteps)
+        y = y[:, :actions.size(1)]
+        y_hat = y.permute(0, 2, 1)
+        actions = actions.squeeze(2)
+        loss = self.loss_fn(y_hat, actions)
+        self.log('metrics/test/loss', loss, prog_bar=False)
+        return loss
 
 if __name__ == '__main__':
     class Params():

@@ -1,0 +1,29 @@
+project: "cube"
+experiment_name: "default"
+
+defaults:
+  - model: "bracket-naive"
+
+seed: 1234
+logdir: "runs"
+params:
+  d_action: 4
+  d_vocab: 1
+  d_model: 128
+  n_head: 4
+  num_layers: 6
+  dropout: 0.0
+  batch_size: 128
+  num_epochs: 50
+  lr: 0.001
+  enable_entropy_loss: False
+
+data:
+  name: "Breakout"
+  val_test_rate: 0.1
+  max_timestamp: 100000
+  seq_max: 32
+
+hydra:
+  job:
+    chdir: False
