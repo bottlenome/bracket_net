@@ -132,6 +132,7 @@ class DecisionLike(pl.LightningModule):
         y_hat = y.permute(0, 2, 1)
         actions = actions.squeeze(2)
         loss = self.loss_fn(y_hat, actions)
+        self.log('metrics/val/loss', loss, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_idx):

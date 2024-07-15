@@ -1,4 +1,4 @@
-project: "cube"
+project: "breakout"
 experiment_name: "default"
 
 defaults:
