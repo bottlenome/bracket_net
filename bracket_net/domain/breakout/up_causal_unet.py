@@ -175,5 +175,5 @@ if __name__ == '__main__':
     x = torch.randn(10, 16, 128)
     y = model.positional_embedding(x, timesteps)
     print(y.shape)
-    y = model(states, actions, rtgs, timesteps)
+    y = model(rtgs, states, actions, timesteps)
     print(y.shape)
