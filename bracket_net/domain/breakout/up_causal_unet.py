@@ -2,6 +2,7 @@ from ...model.up_causal_unet import StackedUnet
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+import numpy as np
 
 
 class PositionalEmbedding(nn.Module):
@@ -144,6 +145,23 @@ class DecisionLike(pl.LightningModule):
         loss = self.loss_fn(y_hat, actions)
         self.log('metrics/test/loss', loss, prog_bar=False)
         return loss
+
+    def act(self, rtgs, state, actions, timesteps):
+        # unsqueeze to add batch dimension
+        # [B, L, 1]
+        rtgs = torch.tensor(rtgs, dtype=torch.float32).unsqueeze(0).unsqueeze(2)
+        state = (torch.tensor(np.array(state))/255.).unsqueeze(0)
+        if state.dim() == 4:
+            state = state.unsqueeze(0)
+        # [B, L, H, W, C] -> [B, L, C, H, W]
+        state = state.permute(0, 1, 4, 2, 3)
+        # [B, L, 1]
+        actions = torch.tensor(list(actions) + [0]).unsqueeze(0).unsqueeze(2)
+        # [B, 1, 1]
+        timesteps = torch.tensor([timesteps]).unsqueeze(0).unsqueeze(2)
+
+        y = self.model(rtgs, state, actions, timesteps)
+        return y[:, -1].argmax().item()
 
 if __name__ == '__main__':
     class Params():
