@@ -203,6 +203,44 @@ def make_state_and_action(batch):
     return torch.tensor(inputs), torch.tensor(targets)
 
 
+def make_state_action_sequence(batch):
+    FACE = 0
+    MOVE = 1
+    actions = []
+    for item in batch:
+        sequence = []
+        for i in range(0, len(item[MOVE]), 2):
+            sequence.append(char2move_int(item[MOVE][i:i+2]))
+        actions.append(torch.tensor(sequence))
+    actions = pad_sequence(actions, batch_first=True, padding_value=0)
+
+    states = []
+    for item in batch:
+        sequence = []
+        sequence.append(face_str2int(item[FACE]))
+        fc = FaceCube()
+        s = fc.from_string(item[FACE])
+        if s is not True:
+            raise ValueError("Error in facelet cube")
+        cc = fc.to_cubie_cube()
+        s = cc.verify()
+        if s != cubie.CUBE_OK:
+            raise ValueError("Error in cubie cube")
+        co_cube = CoordCube(cc)
+        for i in range(0, len(item[MOVE]), 2):
+            m = char2move(item[MOVE][i:i+2])
+            co_cube.corntwist = mv.corntwist_move[N_MOVE * co_cube.corntwist + m]
+            co_cube.cornperm = mv.cornperm_move[N_MOVE * co_cube.cornperm + m]
+            cc = cubie.CubieCube()
+            cc.set_corners(co_cube.cornperm)
+            cc.set_cornertwist(co_cube.corntwist)
+            sequence.append(face_str2int(cc.to_facelet_cube().to_string()))
+        states.append(torch.tensor(sequence))
+    states = pad_sequence(states, batch_first=True, padding_value=0)
+    actions = pad_sequence(torch.tensor(actions), batch_first=True, padding_value=0)
+    return torch.tensor(states), actions
+
+
 @cache
 def get_solved_state():
     fc = FaceCube()
@@ -419,6 +457,38 @@ def StateNextActionLoader(val_test_rate=0.1, batch_size=32, size=None):
 
     return train_dataloader, val_dataloader, test_dataloader
 
+
+def StateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
+    data = R222ShortestAll(size=size)
+    def collate_fn(batch):
+        states, actions = make_state_action_sequence(batch)
+        return states, actions
+
+    train_data_start = 1 # ignore the first data because it is solved state
+    train_data_end = int(len(data)*(1 - 2*val_test_rate))
+    train_dataloader = IterableWrapper(data[train_data_start:train_data_end])
+    train_dataloader = train_dataloader.batch(batch_size=batch_size, drop_last=True)
+    train_dataloader = train_dataloader.collate(collate_fn=collate_fn)
+    train_dataloader = train_dataloader.in_memory_cache(size=500000)
+    train_dataloader = train_dataloader.shuffle(buffer_size=500000)
+
+    val_data_start = train_data_end
+    val_data_end = train_data_end + int(len(data)*val_test_rate)
+    val_dataloader = IterableWrapper(data[val_data_start:val_data_end])
+    val_dataloader = val_dataloader.batch(batch_size=batch_size, drop_last=True)
+    val_dataloader = val_dataloader.collate(collate_fn=collate_fn)
+    val_dataloader = val_dataloader.in_memory_cache(size=100000)
+
+    test_data_start = val_data_end
+    test_data_end = val_data_end + int(len(data)*val_test_rate)
+    test_dataloader = IterableWrapper(data[test_data_start:test_data_end])
+    test_dataloader = test_dataloader.batch(batch_size=batch_size, drop_last=True)
+    test_dataloader = test_dataloader.collate(collate_fn=collate_fn)
+    test_dataloader = test_dataloader.in_memory_cache(size=100000)
+
+    return train_dataloader, val_dataloader, test_dataloader
+
+
 def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
     if loder_name == "NOPLoader":
         return NOPLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
@@ -434,6 +504,8 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateDistanceLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "StateNextActionLoader":
         return StateNextActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "StateActionLoader":
+        return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     else:
         raise ValueError("Invalid loder_name: {}".format(loder_name))
 
@@ -549,4 +621,14 @@ if __name__ == '__main__':
         print("src[0]", i[0][0])
         print("src[0] max:", i[0][0].max())
         print("tgt[0]", i[1][0])
+        break
+    
+    print("StateActionLoader")
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("StateActionLoader", 0.1, 10, size=1000)
+    for i in train_dataloader:
+        print("state, action", len(i))
+        print("state.shape", i[0].shape)
+        print("action.shape", i[1].shape)
+        print("state[0]", i[0][0])
+        print("action[0]", i[1][0])
         break
