@@ -28,6 +28,9 @@ class RubicDataset(Dataset):
         return self.data[idx]
 
 def R222ShortestAll(transform=None, size=None):
+    """ Load R222ShortestAll.pkl that contains all shortest moves of 2x2x2 cube
+        data: (face, shortest_moves)
+    """
     data = pkl.load(open('./data/R222ShortestAll.pkl', 'rb'))
     if size is not None:
         data = data[:size]
@@ -181,6 +184,24 @@ def make_state_and_solve_state(batch):
         targets.append(torch.tensor(faces))
     targets = pad_sequence(targets, batch_first=True, padding_value=0)
     return torch.tensor(inputs), targets
+
+
+def make_state_and_distance(batch):
+    FACE = 0
+    MOVE = 1
+    inputs = [face_str2int(item[FACE]) for item in batch]
+    targets = [len(item[MOVE]) // 2 for item in batch]
+    return torch.tensor(inputs), torch.tensor(targets)
+
+
+def make_state_and_action(batch):
+    FACE = 0
+    MOVE = 1
+    inputs = [face_str2int(item[FACE]) for item in batch]
+    targets = [char2move_int(item[MOVE][0:2]) for item in batch]
+
+    return torch.tensor(inputs), torch.tensor(targets)
+
 
 @cache
 def get_solved_state():
@@ -337,6 +358,67 @@ def AllLoader(val_test_rate=0.1, batch_size=32, size=None):
     return train_dataloader, val_dataloader, test_dataloader
 
 
+def StateDistanceLoader(val_test_rate=0.1, batch_size=32, size=None):
+    data = R222ShortestAll(size=size)
+    def collate_fn(batch):
+        state, distance = make_state_and_distance(batch)
+        return state, distance
+
+    train_data_start = 1 # ignore the first data because it is solved state
+    train_data_end = int(len(data)*(1 - 2*val_test_rate))
+    train_dataloader = IterableWrapper(data[train_data_start:train_data_end])
+    train_dataloader = train_dataloader.batch(batch_size=batch_size, drop_last=True)
+    train_dataloader = train_dataloader.collate(collate_fn=collate_fn)
+    train_dataloader = train_dataloader.in_memory_cache(size=500000)
+    train_dataloader = train_dataloader.shuffle(buffer_size=500000)
+
+    val_data_start = train_data_end
+    val_data_end = train_data_end + int(len(data)*val_test_rate)
+    val_dataloader = IterableWrapper(data[val_data_start:val_data_end])
+    val_dataloader = val_dataloader.batch(batch_size=batch_size, drop_last=True)
+    val_dataloader = val_dataloader.collate(collate_fn=collate_fn)
+    val_dataloader = val_dataloader.in_memory_cache(size=100000)
+
+    test_data_start = val_data_end
+    test_data_end = val_data_end + int(len(data)*val_test_rate)
+    test_dataloader = IterableWrapper(data[test_data_start:test_data_end])
+    test_dataloader = test_dataloader.batch(batch_size=batch_size, drop_last=True)
+    test_dataloader = test_dataloader.collate(collate_fn=collate_fn)
+    test_dataloader = test_dataloader.in_memory_cache(size=100000)
+
+    return train_dataloader, val_dataloader, test_dataloader
+
+
+def StateNextActionLoader(val_test_rate=0.1, batch_size=32, size=None):
+    data = R222ShortestAll(size=size)
+    def collate_fn(batch):
+        state, next_action = make_state_and_action(batch)
+        return state, next_action
+
+    train_data_start = 1 # ignore the first data because it is solved state
+    train_data_end = int(len(data)*(1 - 2*val_test_rate))
+    train_dataloader = IterableWrapper(data[train_data_start:train_data_end])
+    train_dataloader = train_dataloader.batch(batch_size=batch_size, drop_last=True)
+    train_dataloader = train_dataloader.collate(collate_fn=collate_fn)
+    train_dataloader = train_dataloader.in_memory_cache(size=500000)
+    train_dataloader = train_dataloader.shuffle(buffer_size=500000)
+
+    val_data_start = train_data_end
+    val_data_end = train_data_end + int(len(data)*val_test_rate)
+    val_dataloader = IterableWrapper(data[val_data_start:val_data_end])
+    val_dataloader = val_dataloader.batch(batch_size=batch_size, drop_last=True)
+    val_dataloader = val_dataloader.collate(collate_fn=collate_fn)
+    val_dataloader = val_dataloader.in_memory_cache(size=100000)
+
+    test_data_start = val_data_end
+    test_data_end = val_data_end + int(len(data)*val_test_rate)
+    test_dataloader = IterableWrapper(data[test_data_start:test_data_end])
+    test_dataloader = test_dataloader.batch(batch_size=batch_size, drop_last=True)
+    test_dataloader = test_dataloader.collate(collate_fn=collate_fn)
+    test_dataloader = test_dataloader.in_memory_cache(size=100000)
+
+    return train_dataloader, val_dataloader, test_dataloader
+
 def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
     if loder_name == "NOPLoader":
         return NOPLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
@@ -348,6 +430,10 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateLoader2(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "AllLoader":
         return AllLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "StateDistanceLoader":
+        return StateDistanceLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "StateNextActionLoader":
+        return StateNextActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     else:
         raise ValueError("Invalid loder_name: {}".format(loder_name))
 
@@ -442,3 +528,25 @@ if __name__ == '__main__':
             print("tgt[1][0]", i[TGT][MOVES][0])
             print("zero_rate", zero_rate)
     print("zero_rate", zero_rate / len(train_dataloader))
+
+    print("StateDistanceLoader")
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("StateDistanceLoader", 0.1, 10, size=1000)
+    for i in train_dataloader:
+        print("src, tgt", len(i))
+        print("src.shape", i[0].shape)
+        print("tgt.shape", i[1].shape)
+        print("src[0]", i[0][0])
+        print("src[0] max:", i[0][0].max())
+        print("tgt[0]", i[1][0])
+        break
+
+    print("StateNextActionLoader")
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("StateNextActionLoader", 0.1, 10, size=1000)
+    for i in train_dataloader:
+        print("src, tgt", len(i))
+        print("src.shape", i[0].shape)
+        print("tgt.shape", i[1].shape)
+        print("src[0]", i[0][0])
+        print("src[0] max:", i[0][0].max())
+        print("tgt[0]", i[1][0])
+        break
