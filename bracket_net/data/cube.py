@@ -237,8 +237,21 @@ def make_state_action_sequence(batch):
             sequence.append(face_str2int(cc.to_facelet_cube().to_string()))
         states.append(torch.tensor(sequence))
     states = pad_sequence(states, batch_first=True, padding_value=0)
-    actions = pad_sequence(torch.tensor(actions), batch_first=True, padding_value=0)
     return torch.tensor(states), actions
+
+
+def make_reward_state_action_sequence(batch):
+    MOVE = 1
+    states, actions = make_state_action_sequence(batch)
+    rewards = []
+    for item in batch:
+        sequence = [0]
+        for i in range(0, len(item[MOVE]), 2):
+            sequence.append(-1)
+        sequence[-1] = 100
+        rewards.append(torch.tensor(sequence))
+    rewards = pad_sequence(rewards, batch_first=True, padding_value=0)
+    return rewards, states, actions
 
 
 @cache
@@ -489,6 +502,37 @@ def StateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
     return train_dataloader, val_dataloader, test_dataloader
 
 
+def BaseLoader(collate_fn, val_test_rate=0.1, batch_size=32, size=None):
+    data = R222ShortestAll(size=size)
+
+    train_data_start = 1 # ignore the first data because it is solved state
+    train_data_end = int(len(data)*(1 - 2*val_test_rate))
+    train_dataloader = IterableWrapper(data[train_data_start:train_data_end])
+    train_dataloader = train_dataloader.batch(batch_size=batch_size, drop_last=True)
+    train_dataloader = train_dataloader.collate(collate_fn=collate_fn)
+    train_dataloader = train_dataloader.in_memory_cache(size=500000)
+    train_dataloader = train_dataloader.shuffle(buffer_size=500000)
+
+    val_data_start = train_data_end
+    val_data_end = train_data_end + int(len(data)*val_test_rate)
+    val_dataloader = IterableWrapper(data[val_data_start:val_data_end])
+    val_dataloader = val_dataloader.batch(batch_size=batch_size, drop_last=True)
+    val_dataloader = val_dataloader.collate(collate_fn=collate_fn)
+    val_dataloader = val_dataloader.in_memory_cache(size=100000)
+
+    test_data_start = val_data_end
+    test_data_end = val_data_end + int(len(data)*val_test_rate)
+    test_dataloader = IterableWrapper(data[test_data_start:test_data_end])
+    test_dataloader = test_dataloader.batch(batch_size=batch_size, drop_last=True)
+    test_dataloader = test_dataloader.collate(collate_fn=collate_fn)
+    test_dataloader = test_dataloader.in_memory_cache(size=100000)
+
+    return train_dataloader, val_dataloader, test_dataloader
+
+
+def RewardStateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
+    return BaseLoader(make_reward_state_action_sequence, val_test_rate, batch_size, size)
+
 def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
     if loder_name == "NOPLoader":
         return NOPLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
@@ -506,6 +550,8 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateNextActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "StateActionLoader":
         return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "RewardStateActionLoader":
+        return RewardStateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     else:
         raise ValueError("Invalid loder_name: {}".format(loder_name))
 
@@ -631,4 +677,16 @@ if __name__ == '__main__':
         print("action.shape", i[1].shape)
         print("state[0]", i[0][0])
         print("action[0]", i[1][0])
+        break
+
+    print("RewardStateActionLoader")
+    train_dataloader, val_dataloader, test_dataloader = create_dataloader("RewardStateActionLoader", 0.1, 10, size=1000)
+    for i in train_dataloader:
+        print("reward, state, action", len(i))
+        print("reward.shape", i[0].shape)
+        print("state.shape", i[1].shape)
+        print("action.shape", i[2].shape)
+        print("reward[0]", i[0][0])
+        print("state[0]", i[1][0])
+        print("action[0]", i[2][0])
         break
