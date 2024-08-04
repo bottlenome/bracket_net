@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader
 from torchdata.datapipes.iter import IterableWrapper
 from torch.nn.utils.rnn import pad_sequence
 import pickle as pkl
+import os
+from torch.utils.data import random_split
 
 from functools import cache
 
@@ -35,6 +37,47 @@ def R222ShortestAll(transform=None, size=None):
     if size is not None:
         data = data[:size]
     return RubicDataset(data, transform=transform)
+
+
+class RubicDFSDataSet(Dataset):
+    def __init__(self, file_dir="./data/R222DFS/", max_size=None):
+        self.file_dir = file_dir
+        self.file_list = sorted([os.path.join(file_dir, f) for f in os.listdir(file_dir) if f.endswith('.pkl')])
+        self.cache = {}
+        self.max_size = max_size
+
+        # 最初のファイルをロードしてデータ数を推測
+        first_file_path = self.file_list[0]
+        with open(first_file_path, 'rb') as file:
+            first_data = pkl.load(file)
+            self.data_length = len(first_data)
+
+        # max_sizeに基づいて実際のデータ数を計算
+        if self.max_size is not None:
+            self.total_data_points = min(self.max_size, len(self.file_list) * self.data_length)
+        else:
+            self.total_data_points = len(self.file_list) * self.data_length
+
+    def __len__(self):
+        return self.total_data_points
+
+    def __getitem__(self, idx):
+        if idx >= self.total_data_points:
+            raise IndexError("Index out of range")
+
+        file_idx = idx // self.data_length
+        data_idx = idx % self.data_length
+
+        if file_idx in self.cache:
+            data = self.cache[file_idx]
+        else:
+            file_path = self.file_list[file_idx]
+            with open(file_path, 'rb') as file:
+                data = pkl.load(file)
+                self.cache[file_idx] = data
+
+        return self.cache[file_idx][data_idx]
+
 
 def char2move(char):
     if char == "U1":
@@ -337,6 +380,100 @@ def StateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
 def RewardStateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
     return BaseLoader(make_reward_state_action_sequence, val_test_rate, batch_size, size)
 
+def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
+    data = RubicDFSDataSet(max_size=size)
+
+    train_size = int(len(data) * (1 - 2 * val_test_rate))
+    val_size = int(len(data) * val_test_rate)
+    test_size = int(len(data) * val_test_rate)
+
+    train, val, test = random_split(data, [train_size, val_size, test_size])
+
+    def parse_and_tensorize(batch_data):
+        states = []
+        dones = []
+        stacks = []
+        histories = []
+
+        for item in batch_data:
+            states.append(torch.tensor(item["state"], dtype=torch.float32))
+            dones.append(torch.tensor(item["done"], dtype=torch.float32))
+
+            stack_items = []
+            for stack_item in item["stack"]:
+                perm, twist, sofar, depth = stack_item
+                # convert sofar str move to int move
+                sofar = [char2move_int(m) for m in sofar]
+                stack_items.append(torch.tensor([perm, twist, depth] + sofar, dtype=torch.float32))
+            stack_items = pad_sequence(stack_items, batch_first=True, padding_value=0)
+            stacks.append(stack_items)
+            histoy_items = [char2move_int(m) for m in item["history"]]
+            histories.append(torch.tensor(histoy_items, dtype=torch.float32))
+
+        states = torch.stack(states)
+        dones = torch.stack(dones)
+        # 2d padding for stack list
+        max_h = max([s.shape[0] for s in stacks])
+        if max_h < 20:
+            max_h = 20
+        else:
+            raise ValueError("stack height is too large")
+        max_w = max([s.shape[1] for s in stacks])
+        if max_w < 20:
+            max_w = 20
+        else:
+            raise ValueError("stack width is too large")
+        for i in range(len(stacks)):
+            s_i = torch.zeros(max_h, max_w, dtype=torch.float32)
+            s_i[:stacks[i].shape[0], :stacks[i].shape[1]] = stacks[i]
+            stacks[i] = s_i
+        padded_stacks = torch.stack(stacks)
+        padded_histories = pad_sequence(histories, batch_first=True, padding_value=0)
+        return states, dones, padded_stacks, padded_histories
+
+    def collate_fn(batch):
+        states = []
+        dones = []
+        stacks = []
+        histories = []
+        for item in batch:
+            state, done, stack, history = parse_and_tensorize(item)
+            states.append(state)
+            dones.append(done)
+            stacks.append(stack)
+            histories.append(history)
+        states = pad_sequence(states, batch_first=True, padding_value=-1)
+        dones = pad_sequence(dones, batch_first=True, padding_value=-1)
+
+        # 3d padding for stack list
+        max_c = max([s.shape[0] for s in stacks])
+        max_h = max([s.shape[1] for s in stacks])
+        max_w = max([s.shape[2] for s in stacks])
+        for i in range(len(stacks)):
+            s_i = torch.zeros(max_c, max_h, max_w, dtype=torch.float32)
+            s_i[:stacks[i].shape[0], :stacks[i].shape[1], :stacks[i].shape[2]] = stacks[i]
+            stacks[i] = s_i
+        stacks = torch.stack(stacks)
+
+        # 2d padding for histories list
+        max_h = max([h.shape[0] for h in histories])
+        max_w = max([h.shape[1] for h in histories])
+        for i in range(len(histories)):
+            print(histories[i].shape)
+            h_i = torch.zeros(max_h, max_w, dtype=torch.float32)
+            h_i[:histories[i].shape[0], :histories[i].shape[1]] = histories[i]
+            histories[i] = h_i
+        histories = torch.stack(histories)
+
+        return states, dones, stacks, histories
+
+    train_dataloader = DataLoader(train, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    val_dataloader = DataLoader(val, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+    test_dataloader = DataLoader(test, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
+
+    return train_dataloader, val_dataloader, test_dataloader
+
+
 def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
     if loder_name == "NOPLoader":
         return NOPLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
@@ -356,6 +493,8 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "RewardStateActionLoader":
         return RewardStateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "RubicDFSLoader":
+        return RubicDFSLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     else:
         raise ValueError("Invalid loder_name: {}".format(loder_name))
 
@@ -366,14 +505,33 @@ if __name__ == '__main__':
     data = R222ShortestAll(size=100000)
     print("data size", len(data))
     print("example data[1]", data[1])
-    """
+
     train_dataloader = DataLoader(data[:3000000], batch_size=4, shuffle=True)
     for i in train_dataloader:
         print("batch_size", len(i))
         print(i[0])
         break
+    print("RubicDFSDataSet")
+    d = RubicDFSDataSet(max_size=1000)
+    print("data size", len(d))
+    print("example data[1]", d[1])
 
-    """
+    print("RubicDFSLoader")
+    data_loader, _, _ = RubicDFSLoader(0.1, 10, size=1000)
+
+    for i in data_loader:
+        print("batch_size", len(i))
+        states, dones, stacks, histories = i
+        print("states.shape", states.shape)
+        print("dones.shape", dones.shape)
+        print("stacks.shape", stacks.shape)
+        print("histories.shape", histories.shape)
+        print("states[0]", states[0])
+        print("dones[0]", dones[0])
+        print("stacks[0]", stacks[0])
+        print("histories[0]", histories[0])
+        break
+
     print("NOPLoader")
     train_dataloader, val_dataloader, test_dataloader = create_dataloader("NOPLoader", 0.1, 10, size=1000)
     for i in train_dataloader:
@@ -494,3 +652,4 @@ if __name__ == '__main__':
         print("state[0]", i[1][0])
         print("action[0]", i[2][0])
         break
+
