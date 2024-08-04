@@ -22,6 +22,7 @@ docker run ${DOCKER_OPTS} \
            -h bn_docker \
            -v /etc/group:/etc/group:ro \
            -v /etc/passwd:/etc/passwd:ro \
+           -v /data:/data \
            -v ${USER_DIR}:${USER_DIR} \
            -v /mnt:/mnt \
            ${DOCKER_USER} \

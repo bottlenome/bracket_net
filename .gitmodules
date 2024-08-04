@@ -5,3 +5,6 @@
 [submodule "external/Moduled2x2x2Cube"]
 	path = external/Moduled2x2x2Cube
 	url = https://github.com/bottlenome/Moduled2x2x2Cube.git
+[submodule "external/decision-transformer"]
+	path = external/decision-transformer
+	url = https://github.com/bottlenome/decision-transformer.git

@@ -19,3 +19,8 @@ RUN pip install .
 RUN pip install pytorch_memlab
 RUN pip install torchdata
 RUN pip install reformer_pytorch
+RUN pip install dopamine-rl
+RUN apt-get -y update && apt-get -y install build-essential
+RUN pip install gym[atari]
+RUN pip install autorom
+RUN pip install gym[accept-rom-license]
