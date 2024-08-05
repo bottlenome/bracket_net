@@ -21,11 +21,11 @@ def simulate(initial_state, model):
         raise ValueError("Error in cubie cube")
     co_cube = CoordCube(cc)
     for _ in range(10):
+        if co_cube.is_solved():
+            return 1
         min_distance = 1000
         min_move = None
         for m in Move:
-            if co_cube.is_solved():
-                return 1
             after_state = deepcopy(co_cube)
             after_state.move(m)
             state_str = after_state.to_string()
@@ -37,6 +37,8 @@ def simulate(initial_state, model):
                 min_move = m
         if min_move is not None:
             co_cube.move(min_move)
+        else:
+            raise ValueError("No move found")
     return 0
 
 
@@ -106,6 +108,9 @@ if __name__ == '__main__':
                 return torch.tensor([0.1])
             else:
                 return torch.tensor([1.0])
+
+        def parameters(self):
+            yield torch.tensor([1.0])
 
     model = Mock()
     state = 'UUUURRRRFFFFDDDDLLLLBBBB'
