@@ -5,21 +5,11 @@ import pytorch_lightning as pl
 def simulate(initial_state, model):
     from ...data.cube import face_str2int, face_int2str
     from ...data.cube_model.enums import Move
-    from ...data.cube_model.face import FaceCube
     from ...data.cube_model.coord import CoordCube
-    from ...data.cube_model.cubie import CubieCube
     from copy import deepcopy
 
     state_string = face_int2str(initial_state)
-    fc = FaceCube()
-    s = fc.from_string(state_string)
-    if s is not True:
-        raise ValueError("Error in facelet cube")
-    cc = fc.to_cubie_cube()
-    s = cc.verify()
-    if s is not True:
-        raise ValueError("Error in cubie cube")
-    co_cube = CoordCube(cc)
+    co_cube = CoordCube.from_string(state_string)
     for _ in range(10):
         if co_cube.is_solved():
             return 1
@@ -39,6 +29,27 @@ def simulate(initial_state, model):
             co_cube.move(min_move)
         else:
             raise ValueError("No move found")
+    return 0
+
+def simulate_policy(initial_state, model):
+    from ...data.cube import face_str2int, face_int2str
+    from ...data.cube_model.enums import Move
+    from ...data.cube_model.coord import CoordCube
+
+    state_string = face_int2str(initial_state)
+    co_cube = CoordCube.from_string(state_string)
+    for _ in range(10):
+        if co_cube.is_solved():
+            return 1
+        state_input = torch.tensor(face_str2int(state_string), dtype=torch.float32).unsqueeze(0) / 7.
+        state_input = state_input.to(next(model.parameters()).device)
+        move = model(state_input).argmax()
+        try:
+            m = Move(move.item() - 1) # 0 invalid move is not used
+        except ValueError:
+            return 0
+        co_cube.move(m)
+        state_string = co_cube.to_string()
     return 0
 
 
@@ -94,6 +105,55 @@ class DistanceEstimator(pl.LightningModule):
         return loss
 
 
+class PolicyEstimator(pl.LightningModule):
+    def __init__(self, config):
+        from ...data.cube_model.enums import Move
+        super().__init__()
+        self.model = Linear(num_hidden=config.params.num_layers,
+                            output_size=len(Move) + 1,
+                            dropout_prob=config.params.dropout)
+        self.lr = config.params.lr
+
+    def forward(self, x):
+        x = x / 7.
+        y = self.model(x)
+        return y
+
+    def loss_fn(self, y, x):
+        return torch.nn.functional.cross_entropy(y, x)
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=0.001)
+
+    def training_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y)
+        self.log('metrics/train/loss', loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y)
+        self.log('metrics/val/loss', loss, prog_bar=True)
+        if batch_idx == 0:
+            total = 0.
+            try_num = 10
+            for i in range(try_num):
+                solved = simulate_policy(x[i], self.model)
+                total += solved
+            self.log('metrics/val/solved', total / try_num, prog_bar=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = self.loss_fn(y_hat, y)
+        self.log('metrics/test/loss', loss, prog_bar=False)
+        return loss
+
+
 if __name__ == '__main__':
     from ...data.cube import face_str2int
 
@@ -116,7 +176,6 @@ if __name__ == '__main__':
     state = 'UUUURRRRFFFFDDDDLLLLBBBB'
     state_tensor = torch.tensor(face_str2int(state), dtype=torch.float32)
     print(simulate(state_tensor, model))
-    print('Done')
 
     from ...data.cube_model.enums import Move
     from ...data.cube_model.coord import CoordCube
@@ -125,3 +184,28 @@ if __name__ == '__main__':
     cc.move(Move.U3)
     state_tensor = torch.tensor(face_str2int(cc.to_string()), dtype=torch.float32)
     print(simulate(state_tensor, model))
+
+    class MockPolicy:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, x):
+            if self.count == 0:
+                # make one hot array for Move.U1
+                vector = torch.zeros(1, len(Move))
+                vector[0][Move.U1.value + 1] = 1
+                self.count += 1
+                return vector
+            else:
+                vector = torch.zeros(1, len(Move))
+                vector[0][Move.U2.value + 1] = 1
+                return vector
+
+        def parameters(self):
+            yield torch.tensor([1.0])
+    
+    model = MockPolicy()
+    cc = CoordCube()
+    cc.move(Move.U3)
+    state_tensor = torch.tensor(face_str2int(cc.to_string()), dtype=torch.float32)
+    print(simulate_policy(state_tensor, model))

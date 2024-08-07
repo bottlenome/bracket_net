@@ -32,7 +32,8 @@ def main(config):
         from bracket_net.domain.cube.linear import DistanceEstimator
         model = DistanceEstimator(config)
     elif config.data.name == "StateNextActionLoader":
-        pass
+        from bracket_net.domain.cube.linear import PolicyEstimator
+        model = PolicyEstimator(config)
     elif config.data.name == "RewardStateActionLoader":
         pass
     elif config.data.name == "StateActionLoader":
