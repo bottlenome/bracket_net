@@ -1,6 +1,7 @@
 from ...model.gpt import GPTBlock
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pytorch_lightning as pl
 
 
@@ -10,7 +11,8 @@ def get_single_rtgs(reward, device):
 def get_single_state(state_str, device):
     from ...data.cube import face_str2int
     state_int = face_str2int(state_str)
-    return torch.tensor(state_int, dtype=torch.int64, device=device).unsqueeze(0)
+    state_tensor = torch.tensor(state_int, dtype=torch.int64, device=device)
+    return state_tensor.unsqueeze(0).unsqueeze(0)
 
 def simulate(initial_state, model):
     from ...data.cube import face_int2str
@@ -30,15 +32,18 @@ def simulate(initial_state, model):
             rtgs = get_single_rtgs(reward, device)
             state = get_single_state(co_cube.to_string(), device)
             action = None
-            timestep = torch.zeros(1, 1, 1, dtype=torch.int64)
+            timestep = torch.zeros(1, 1, 1, dtype=torch.int64, device=device)
         else:
             rtgs = torch.cat([rtgs, get_single_rtgs(reward, device)], dim=1)
             state = torch.cat(
                 [state, get_single_state(co_cube.to_string(), device)], dim=1)
             # action and timestep is no need to update
-        y = model(rtgs, state, action, timestep)
+        y = model.estimate(rtgs, state, action, timestep)
         action = y[:, 1::3, :].argmax(dim=-1)
-        co_cube.move(Move(action[:, -1].item() - 1))
+        try:
+            co_cube.move(Move(action[:, -1].item() - 1))
+        except Exception as e:
+            return 0
         reward += move_reward
 
     return 0
@@ -91,20 +96,24 @@ class DecisionFormer(pl.LightningModule):
             state (torch.Tensor): [batch, seq, state]
             action (torch.Tensor): [batch, seq, 1]
             timesteps (torch.Tensor): [batch, 1, 1]
-            rtgs (torch.Tensor): [batch, seq, 1]
+            rtgs (torch.Tensor): [batch, seq]
         """
         if rtgs is not None:
+            rtgs = rtgs.float()
+            rtgs = rtgs.unsqueeze(-1)
             rtgs_encoded = self.rtgs_encoder(rtgs)
         state_encoded = self.state_encoder(state)
         action_encoded = self.action_encoder(action)
 
         batch_size = state.size(0) # batch, seq, state
         embedding_dim = state_encoded.size(2)
+        action_encoded_pad = F.pad(action_encoded, (0, 0, 0, 1))
         if rtgs is not None:
-            token_embedding = torch.cat([rtgs_encoded, state_encoded, action_encoded], dim=2)
+            token_embedding = torch.cat([rtgs_encoded, state_encoded, action_encoded_pad], dim=2)
         else:
-            token_embedding = torch.cat([state_encoded, action_encoded], dim=2)
+            token_embedding = torch.cat([state_encoded, action_encoded_pad], dim=2)
         token_embedding = token_embedding.view(batch_size, -1, embedding_dim)
+        token_embedding = token_embedding[:, :-2, :]
 
         global_position_embedding = self.global_position_embedding.expand(batch_size, -1, -1)
         timesteps_expand = timesteps.expand(-1, -1, embedding_dim)
@@ -119,16 +128,20 @@ class DecisionFormer(pl.LightningModule):
 
     def estimate(self, rtgs, state, action, timesteps):
         batch_size = state.size(0) # batch, seq, state
-        embedding_dim = state_encoded.size(2)
 
+        rtgs = rtgs.float()
         rtgs_encoded = self.rtgs_encoder(rtgs)
         state_encoded = self.state_encoder(state)
         if action is not None:
             action_encoded = self.action_encoder(action)
+            action_encoded = F.pad(action_encoded, (0, 0, 0, 1))
             token_embedding = torch.cat([rtgs_encoded, state_encoded, action_encoded], dim=2)
         else:
             token_embedding = torch.cat([rtgs_encoded, state_encoded], dim=2)
+        embedding_dim = state_encoded.size(2)
         token_embedding = token_embedding.view(batch_size, -1, embedding_dim)
+        if action is not None:
+            token_embedding = token_embedding[:, :-1, :] # remove padded action
 
         global_position_embedding = self.global_position_embedding.expand(batch_size, -1, -1)
         timesteps_expand = timesteps.expand(-1, -1, embedding_dim)
@@ -138,8 +151,6 @@ class DecisionFormer(pl.LightningModule):
         x = self.dropout(token_embedding + position_embedding)
         x = self.layer_norm(self.gpt_block(x))
         y = self.head(x)
-
-        return y
 
         return y
 
@@ -172,7 +183,8 @@ class DecisionFormer(pl.LightningModule):
             total = 0.
             try_num = 10
             for i in range(try_num):
-                solved = simulate(x[i], self.model)
+                _, state, _ = batch
+                solved = simulate(state[i, 0], self)
                 total += solved
             self.log('metrics/val/solved', total / try_num, prog_bar=True)
             

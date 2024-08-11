@@ -35,7 +35,8 @@ def main(config):
         from bracket_net.domain.cube.linear import PolicyEstimator
         model = PolicyEstimator(config)
     elif config.data.name == "RewardStateActionLoader":
-        pass
+        from bracket_net.domain.cube.gpt import DecisionFormer
+        model = DecisionFormer(config)
     elif config.data.name == "StateActionLoader":
         pass
     elif config.data.name == "RubicDFSLoader":
