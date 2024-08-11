@@ -206,7 +206,7 @@ if __name__ == '__main__':
         n_head = 4
         num_layers = 6
         dropout = 0.1
-        max_len = 32
+        max_len = 11
         lr = 0.01
     class Config:
         params = Params()
@@ -215,12 +215,12 @@ if __name__ == '__main__':
     model = DecisionFormer(config)
     max_len = config.params.max_len
     state = torch.zeros(10, max_len, 24, dtype=torch.int64)
-    action = torch.zeros(10, max_len, 1, dtype=torch.int64)
+    action = torch.zeros(10, max_len - 1, 1, dtype=torch.int64)
     timestep = torch.zeros(10, 1, 1, dtype=torch.int64)
     output = model(state, action, timestep)
     print(output.shape)
 
-    rtgs = torch.zeros(10, max_len, 1, dtype=torch.float32)
+    rtgs = torch.zeros(10, max_len, dtype=torch.float32)
     output = model(state, action, timestep, rtgs)
     print(output.shape)
 
@@ -256,6 +256,9 @@ if __name__ == '__main__':
             d_model = action.size(-1)
             output = torch.cat([action, action, action], dim=2).view(1, -1, d_model)
             return output
+
+        def estimate(self, rtgs, state, action, timestep):
+            return self(rtgs, state, action, timestep)
 
         def parameters(self):
             yield torch.tensor([1.0])
