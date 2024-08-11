@@ -38,7 +38,8 @@ def main(config):
         from bracket_net.domain.cube.gpt import DecisionFormer
         model = DecisionFormer(config)
     elif config.data.name == "StateActionLoader":
-        pass
+        from bracket_net.domain.cube.gpt import ActionStateDecisionFormer
+        model = ActionStateDecisionFormer(config)
     elif config.data.name == "RubicDFSLoader":
         pass
     else:

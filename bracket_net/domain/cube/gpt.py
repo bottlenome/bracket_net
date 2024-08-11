@@ -38,7 +38,7 @@ def simulate(initial_state, model):
             state = torch.cat(
                 [state, get_single_state(co_cube.to_string(), device)], dim=1)
             # action and timestep is no need to update
-        y = model.estimate(rtgs, state, action, timestep)
+        y = model.estimate(state, action, timestep, rtgs=rtgs)
         action = y[:, 1::3, :].argmax(dim=-1)
         try:
             co_cube.move(Move(action[:, -1].item() - 1))
@@ -48,8 +48,35 @@ def simulate(initial_state, model):
 
     return 0
 
+def simulate_with_state_action(initial_state, model):
+    from ...data.cube import face_int2str
+    from ...data.cube_model.enums import Move
+    from ...data.cube_model.coord import CoordCube
 
-class DecisionFormer(pl.LightningModule):
+    device = next(model.parameters()).device
+    state_string = face_int2str(initial_state)
+    co_cube = CoordCube.from_string(state_string)
+    for i in range(10):
+        if co_cube.is_solved():
+            return 1
+        if i == 0:
+            state = get_single_state(co_cube.to_string(), device)
+            action = None
+            timestep = torch.zeros(1, 1, 1, dtype=torch.int64, device=device)
+        else:
+            state = torch.cat(
+                [state, get_single_state(co_cube.to_string(), device)], dim=1)
+            # action and timestep is no need to update
+        y = model.estimate(state, action, timestep)
+        action = y[:, 1::2, :].argmax(dim=-1)
+        try:
+            co_cube.move(Move(action[:, -1].item() - 1))
+        except Exception as e:
+            return 0
+
+    return 0
+
+class BaseDecisionFormer(pl.LightningModule):
     def __init__(self, config):
         from ...data.cube_model.enums import Move, Color, Facelet
         super().__init__()
@@ -126,18 +153,25 @@ class DecisionFormer(pl.LightningModule):
 
         return y
 
-    def estimate(self, rtgs, state, action, timesteps):
+    def estimate(self, state, action, timesteps, rtgs=None):
         batch_size = state.size(0) # batch, seq, state
 
-        rtgs = rtgs.float()
-        rtgs_encoded = self.rtgs_encoder(rtgs)
+        if rtgs is not None:
+            rtgs = rtgs.float()
+            rtgs_encoded = self.rtgs_encoder(rtgs)
         state_encoded = self.state_encoder(state)
         if action is not None:
             action_encoded = self.action_encoder(action)
             action_encoded = F.pad(action_encoded, (0, 0, 0, 1))
-            token_embedding = torch.cat([rtgs_encoded, state_encoded, action_encoded], dim=2)
+            if rtgs is not None:
+                token_embedding = torch.cat([rtgs_encoded, state_encoded, action_encoded], dim=2)
+            else:
+                token_embedding = torch.cat([state_encoded, action_encoded], dim=2)
         else:
-            token_embedding = torch.cat([rtgs_encoded, state_encoded], dim=2)
+            if rtgs is not None:
+                token_embedding = torch.cat([rtgs_encoded, state_encoded], dim=2)
+            else:
+                token_embedding = state_encoded
         embedding_dim = state_encoded.size(2)
         token_embedding = token_embedding.view(batch_size, -1, embedding_dim)
         if action is not None:
@@ -200,6 +234,39 @@ class DecisionFormer(pl.LightningModule):
         return loss
 
 
+class DecisionFormer(BaseDecisionFormer):
+    def __init__(self, config):
+        super().__init__(config)
+
+
+class ActionStateDecisionFormer(BaseDecisionFormer):
+    def __init__(self, config):
+        super().__init__(config)
+
+    def step(self, batch, batch_idx):
+        state, action = batch
+        batch_size = state.size(0)
+        timestep = torch.zeros(batch_size, 1, 1, dtype=torch.int64, device=state.device)
+        y_hat = self(state, action, timestep)
+        action_hat = y_hat[:, 1::2, :].reshape(-1, y_hat.size(-1))
+        action = action.view(-1)
+        loss = self.loss_fn(action_hat, action)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch, batch_idx)
+        self.log('metrics/val/loss', loss, prog_bar=True)
+        if batch_idx == 0:
+            total = 0.
+            try_num = 10
+            for i in range(try_num):
+                state, _ = batch
+                solved = simulate_with_state_action(state[i, 0], self)
+                total += solved
+            self.log('metrics/val/solved', total / try_num, prog_bar=True)
+        return loss
+
+
 if __name__ == '__main__':
     class Params:
         d_model = 128
@@ -243,7 +310,7 @@ if __name__ == '__main__':
             self.count = 0
             self.device = torch.device("cpu")
 
-        def __call__(self, rtgs, state, action, timestep):
+        def __call__(self, state, action, timestep, rtgs):
             action = torch.zeros(1, 1, len(Move) + 1, dtype=torch.float32)
             if self.count == 0:
                 self.count += 1
@@ -257,8 +324,8 @@ if __name__ == '__main__':
             output = torch.cat([action, action, action], dim=2).view(1, -1, d_model)
             return output
 
-        def estimate(self, rtgs, state, action, timestep):
-            return self(rtgs, state, action, timestep)
+        def estimate(self, state, action, timestep, rtgs=None):
+            return self(state, action, timestep, rtgs)
 
         def parameters(self):
             yield torch.tensor([1.0])
