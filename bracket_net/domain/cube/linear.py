@@ -69,7 +69,7 @@ class DistanceEstimator(pl.LightningModule):
         return torch.nn.functional.mse_loss(y, x)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=0.001)
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -92,9 +92,8 @@ class DistanceEstimator(pl.LightningModule):
                 solved = simulate(x[i], self.model)
                 total += solved
             self.log('metrics/val/solved', total / try_num, prog_bar=True)
-            
+
         return loss
-    
 
     def test_step(self, batch, batch_idx):
         x, y = batch
@@ -123,7 +122,7 @@ class PolicyEstimator(pl.LightningModule):
         return torch.nn.functional.cross_entropy(y, x)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=0.001)
+        return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
     def training_step(self, batch, batch_idx):
         x, y = batch

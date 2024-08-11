@@ -5,12 +5,12 @@ seed: 1234
 logdir: "runs"
 
 params:
-  d_model: 128
-  num_layers: 4
-  dropout: 0.1
+  d_model: 512
+  num_layers: 30
+  dropout: 0.05
   batch_size: 1024
   num_epochs: 50
-  lr: 0.001
+  lr: 0.00000001
 
 data:
   name: "StateDistanceLoader"
