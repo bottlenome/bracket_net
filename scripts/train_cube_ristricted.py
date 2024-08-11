@@ -41,7 +41,8 @@ def main(config):
         from bracket_net.domain.cube.gpt import ActionStateDecisionFormer
         model = ActionStateDecisionFormer(config)
     elif config.data.name == "RubicDFSLoader":
-        pass
+        from bracket_net.domain.cube.gpt import DFSDecisionFormer
+        model = DFSDecisionFormer(config)
     else:
         raise ValueError(f"Unknown model name {config.model.name}")
 

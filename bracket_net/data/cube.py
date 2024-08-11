@@ -380,6 +380,8 @@ def StateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
 def RewardStateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
     return BaseLoader(make_reward_state_action_sequence, val_test_rate, batch_size, size)
 
+DFS_STACK_WIDTH = 20
+DFS_STACK_HEIGHT = 20
 def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
     data = RubicDFSDataSet(max_size=size)
 
@@ -414,13 +416,13 @@ def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
         dones = torch.stack(dones)
         # 2d padding for stack list
         max_h = max([s.shape[0] for s in stacks])
-        if max_h < 20:
-            max_h = 20
+        if max_h < DFS_STACK_HEIGHT:
+            max_h = DFS_STACK_HEIGHT
         else:
             raise ValueError("stack height is too large")
         max_w = max([s.shape[1] for s in stacks])
-        if max_w < 20:
-            max_w = 20
+        if max_w < DFS_STACK_WIDTH:
+            max_w = DFS_STACK_WIDTH
         else:
             raise ValueError("stack width is too large")
         for i in range(len(stacks)):
@@ -459,7 +461,6 @@ def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
         max_h = max([h.shape[0] for h in histories])
         max_w = max([h.shape[1] for h in histories])
         for i in range(len(histories)):
-            print(histories[i].shape)
             h_i = torch.zeros(max_h, max_w, dtype=torch.float32)
             h_i[:histories[i].shape[0], :histories[i].shape[1]] = histories[i]
             histories[i] = h_i
@@ -526,11 +527,14 @@ if __name__ == '__main__':
         print("dones.shape", dones.shape)
         print("stacks.shape", stacks.shape)
         print("histories.shape", histories.shape)
+        """"
         print("states[0]", states[0])
         print("dones[0]", dones[0])
         print("stacks[0]", stacks[0])
         print("histories[0]", histories[0])
+        """
         break
+    exit()
 
     print("NOPLoader")
     train_dataloader, val_dataloader, test_dataloader = create_dataloader("NOPLoader", 0.1, 10, size=1000)
