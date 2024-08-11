@@ -11,5 +11,6 @@ python -m bracket_net.domain.planning.up_causal_unet
 python -m bracket_net.domain.breakout.up_causal_unet
 
 python -m bracket_net.domain.cube.linear
+python -m bracket_net.domain.cube.gpt
 
 echo "PASS"
