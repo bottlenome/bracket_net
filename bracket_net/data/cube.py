@@ -251,10 +251,10 @@ def make_reward_state_action_sequence(batch):
     states, actions = make_state_action_sequence(batch)
     rewards = []
     for item in batch:
-        sequence = [0]
-        for i in range(0, len(item[MOVE]), 2):
-            sequence.append(-1)
-        sequence[-1] = 100
+        sequence = []
+        for i in range(0, len(item[MOVE]) + 2, 2):
+            rtgs = 100 - len(item[MOVE]) // 2 + i // 2
+            sequence.append(rtgs)
         rewards.append(torch.tensor(sequence))
     rewards = pad_sequence(rewards, batch_first=True, padding_value=0)
     return rewards, states, actions
