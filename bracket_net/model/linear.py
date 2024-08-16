@@ -12,12 +12,15 @@ class Linear(nn.Module):
 
         # 入力層の定義
         self.input_layer = nn.Linear(2 * embed_size * input_size, hidden_size)
+        self.input_batch_norm = nn.BatchNorm1d(hidden_size)
 
         self.num_hidden = num_hidden
         # 隠れ層の定義
         self.hidden_layers = nn.ModuleList()
+        self.hidden_batch_norms = nn.ModuleList()
         for _ in range(self.num_hidden - 1):
             self.hidden_layers.append(nn.Linear(hidden_size, hidden_size))
+            self.hidden_batch_norms.append(nn.BatchNorm1d(hidden_size))
 
         # 出力層の定義
         self.output_layer = nn.Linear(hidden_size, output_size)
@@ -42,12 +45,14 @@ class Linear(nn.Module):
         x = x.view(batch_size, -1)
 
         # 入力層を通過
-        x = self.relu(self.input_layer(x))
-        x = self.dropout(x)
+        x = self.input_batch_norm(self.input_layer(x))
+        x = self.dropout(self.relu(x))
 
         # 隠れ層を通過
-        for layer in self.hidden_layers:
-            x = x + self.relu(layer(x))
+        for i in range(len(self.hidden_layers)):
+            x = self.hidden_batch_norms[i](self.hidden_layers[i](x))
+            x = x + self.relu(x)
+            x = self.relu(x)
             x = self.dropout(x)
 
         # 出力層を通過

@@ -27,7 +27,7 @@ def simulate(initial_state, model):
     move_reward = -1
     state_string = face_int2str(initial_state)
     co_cube = CoordCube.from_string(state_string)
-    for i in range(10):
+    for i in range(12):
         if co_cube.is_solved():
             return 1
         if i == 0:

@@ -204,7 +204,7 @@ def make_state_and_action(batch):
     FACE = 0
     MOVE = 1
     inputs = [face_str2int(item[FACE]) for item in batch]
-    targets = [char2move_int(item[MOVE][0:2]) for item in batch]
+    targets = [char2move_int(item[MOVE][0:2]) - 1 for item in batch]
 
     return torch.tensor(inputs), torch.tensor(targets)
 
@@ -534,7 +534,6 @@ if __name__ == '__main__':
         print("histories[0]", histories[0])
         """
         break
-    exit()
 
     print("NOPLoader")
     train_dataloader, val_dataloader, test_dataloader = create_dataloader("NOPLoader", 0.1, 10, size=1000)
@@ -619,9 +618,10 @@ if __name__ == '__main__':
         print("src, tgt", len(i))
         print("src.shape", i[0].shape)
         print("tgt.shape", i[1].shape)
+        print("src", i[0])
         print("src[0]", i[0][0])
         print("src[0] max:", i[0][0].max())
-        print("tgt[0]", i[1][0])
+        print("tgt", i[1])
         break
 
     print("StateNextActionLoader")
