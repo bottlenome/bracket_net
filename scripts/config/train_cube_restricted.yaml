@@ -8,7 +8,7 @@ params:
   d_model: 128
   num_layers: 6
   n_head: 4
-  max_len: 11
+  max_len: 13
   dropout: 0.1
   batch_size: 1024
   num_epochs: 50

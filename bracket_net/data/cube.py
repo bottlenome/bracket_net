@@ -210,15 +210,16 @@ def make_state_and_action(batch):
 
 
 def make_state_action_sequence(batch):
+    from .cube_model.enums import Move
     FACE = 0
     MOVE = 1
     actions = []
     for item in batch:
         sequence = []
         for i in range(0, len(item[MOVE]), 2):
-            sequence.append(char2move_int(item[MOVE][i:i+2]))
+            sequence.append(char2move_int(item[MOVE][i:i+2]) - 1)
         actions.append(torch.tensor(sequence))
-    actions = pad_sequence(actions, batch_first=True, padding_value=0)
+    actions = pad_sequence(actions, batch_first=True, padding_value=len(Move))
 
     states = []
     for item in batch:

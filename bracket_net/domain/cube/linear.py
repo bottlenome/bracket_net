@@ -1,26 +1,8 @@
 from ...model.linear import Linear
 import torch
 import pytorch_lightning as pl
-from datetime import datetime
-import os
+from .utils import DebugLogger
 
-class DebugLogger():
-    def __init__(self):
-        self.logdir = "cube_logs"
-        # set datetime to log filename
-        self.log_filename = f"{self.logdir}/cube_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-        if not os.path.exists(self.logdir):
-            os.makedirs(self.logdir)
-
-    @staticmethod
-    def get_instance():
-        if not hasattr(DebugLogger, "_instance"):
-            DebugLogger._instance = DebugLogger()
-        return DebugLogger._instance
-
-    def rint(self, *args, **kwargs):
-        with open(self.log_filename, "a") as f:
-            print(*args, **kwargs, file=f)
 
 def simulate(initial_state, model):
     from ...data.cube import face_str2int, face_int2str
@@ -32,7 +14,7 @@ def simulate(initial_state, model):
 
     state_string = face_int2str(initial_state)
     co_cube = CoordCube.from_string(state_string)
-    for _ in range(10):
+    for _ in range(12):
         if co_cube.is_solved():
             return 1
         min_distance = 1000

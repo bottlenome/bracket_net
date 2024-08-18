@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from .utils import DebugLogger
 
 
 def get_single_rtgs(reward, device):
@@ -21,6 +22,7 @@ def simulate(initial_state, model):
     from ...data.cube_model.enums import Move
     from ...data.cube_model.coord import CoordCube
 
+    p = DebugLogger.get_instance()
     device = next(model.parameters()).device
 
     reward = 110
@@ -29,6 +31,7 @@ def simulate(initial_state, model):
     co_cube = CoordCube.from_string(state_string)
     for i in range(12):
         if co_cube.is_solved():
+            p.rint("solved")
             return 1
         if i == 0:
             rtgs = get_single_rtgs(reward, device)
@@ -41,13 +44,17 @@ def simulate(initial_state, model):
                 [state, get_single_state(co_cube.to_string(), device)], dim=1)
             # action and timestep is no need to update
         y = model.estimate(state, action, timestep, rtgs=rtgs)
-        action = y[:, 1::3, :].argmax(dim=-1)
+        action = y[:, 1::3, :]
+        p.rint(f"action_prob:{action[:, -1]}")
+        action = action.argmax(dim=-1)
         try:
-            co_cube.move(Move(action[:, -1].item() - 1))
+            p.rint(f"move:{action[:, -1].item()}")
+            co_cube.move(Move(action[:, -1].item()))
         except Exception as e:
+            p.rint("invalid move")
             return 0
         reward += move_reward
-
+    p.rint("reach max steps")
     return 0
 
 
@@ -56,11 +63,13 @@ def simulate_with_state_action(initial_state, model):
     from ...data.cube_model.enums import Move
     from ...data.cube_model.coord import CoordCube
 
+    p = DebugLogger.get_instance()
     device = next(model.parameters()).device
     state_string = face_int2str(initial_state)
     co_cube = CoordCube.from_string(state_string)
-    for i in range(10):
+    for i in range(12):
         if co_cube.is_solved():
+            p.rint("solved")
             return 1
         if i == 0:
             state = get_single_state(co_cube.to_string(), device)
@@ -73,10 +82,12 @@ def simulate_with_state_action(initial_state, model):
         y = model.estimate(state, action, timestep)
         action = y[:, 1::2, :].argmax(dim=-1)
         try:
-            co_cube.move(Move(action[:, -1].item() - 1))
+            p.rint(f"move:{action[:, -1].item()}")
+            co_cube.move(Move(action[:, -1].item()))
         except Exception as e:
+            p.rint("invalid move")
             return 0
-
+    p.rint("reach max steps")
     return 0
 
 
@@ -119,7 +130,8 @@ class BaseDecisionFormer(pl.LightningModule):
         super().__init__()
         face_color_size = len(Color) + 1
         face_let_size = len(Facelet)
-        move_size = len(Move) + 1
+        move_size = len(Move)
+        self.move_size = move_size
         self.state_encoder = nn.Sequential(
             nn.Embedding(face_color_size, config.params.d_model),
             nn.Flatten(start_dim=2), # batch, seq, state, d_model -> batch, seq, state * d_model
@@ -129,7 +141,7 @@ class BaseDecisionFormer(pl.LightningModule):
             nn.Linear(config.params.d_model, config.params.d_model),
             nn.Tanh())
         self.action_encoder = nn.Sequential(
-            nn.Embedding(move_size, config.params.d_model),
+            nn.Embedding(move_size + 1, config.params.d_model, padding_idx=move_size),
             nn.Flatten(start_dim=2), # batch, seq, 1, d_model -> batch, seq, d_model
             nn.ReLU(),
             nn.Linear(config.params.d_model, config.params.d_model),
@@ -142,7 +154,7 @@ class BaseDecisionFormer(pl.LightningModule):
             nn.Tanh()
         )
         self.position_embedding = nn.Parameter(torch.zeros(1, (config.params.max_len * 3) + 1, config.params.d_model))
-        max_timestamp = 10
+        max_timestamp = config.params.max_len - 1
         self.global_position_embedding = nn.Parameter(torch.zeros(1, max_timestamp + 1, config.params.d_model))
 
         self.gpt_block = GPTBlock(config.params.d_model, config.params.n_head,
@@ -226,7 +238,7 @@ class BaseDecisionFormer(pl.LightningModule):
         return y
 
     def loss_fn(self, y, x):
-        return torch.nn.functional.cross_entropy(y, x)
+        return torch.nn.functional.cross_entropy(y, x, ignore_index=self.move_size)
 
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)

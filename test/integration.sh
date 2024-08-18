@@ -35,4 +35,10 @@ params.num_layers=${NUM_LAYERS} params.d_model=16 params.n_head=1 \
 model.name=up-causal-naive \
 data.size_max=1024
 
+python -m scripts.train_cube_ristricted data.name=StateDistanceLoader \
+data.size_max=102400 params.num_epochs=${EPOCHS}
+
+python -m scripts.train_cube_ristricted data.name=StateNextActionLoader \
+data.size_max=102400 params.num_epochs=${EPOCHS}
+
 echo "PASS"
