@@ -47,8 +47,8 @@ def simulate(initial_state, model):
         action = y[:, 1::3, :]
         p.rint(f"action_prob:{action[:, -1]}")
         action = action.argmax(dim=-1)
+        p.rint(f"move:{action[:, -1].item()}")
         try:
-            p.rint(f"move:{action[:, -1].item()}")
             co_cube.move(Move(action[:, -1].item()))
         except Exception as e:
             p.rint("invalid move")
@@ -80,9 +80,9 @@ def simulate_with_state_action(initial_state, model):
                 [state, get_single_state(co_cube.to_string(), device)], dim=1)
             # action and timestep is no need to update
         y = model.estimate(state, action, timestep)
-        action = y[:, 1::2, :].argmax(dim=-1)
+        action = y[:, 0::2, :].argmax(dim=-1)
+        p.rint(f"move:{action[:, -1].item()}")
         try:
-            p.rint(f"move:{action[:, -1].item()}")
             co_cube.move(Move(action[:, -1].item()))
         except Exception as e:
             p.rint("invalid move")
@@ -288,16 +288,17 @@ class DecisionFormer(BaseDecisionFormer):
         super().__init__(config)
 
 
-class ActionStateDecisionFormer(BaseDecisionFormer):
+class StateActionDecisionFormer(BaseDecisionFormer):
     def __init__(self, config):
         super().__init__(config)
+        del self.rtgs_encoder
 
     def step(self, batch, batch_idx):
         state, action = batch
         batch_size = state.size(0)
         timestep = torch.zeros(batch_size, 1, 1, dtype=torch.int64, device=state.device)
         y_hat = self(state, action, timestep)
-        action_hat = y_hat[:, 1::2, :].reshape(-1, y_hat.size(-1))
+        action_hat = y_hat[:, 0::2, :].reshape(-1, y_hat.size(-1))
         action = action.view(-1)
         loss = self.loss_fn(action_hat, action)
         return loss
@@ -358,6 +359,10 @@ class DFSDecisionFormer(BaseDecisionFormer):
         self.history_head = nn.Linear(config.params.d_model, self.history_size)
 
         self.lr = config.params.lr
+
+        del self.head
+        del self.rtgs_encoder
+        del self.action_encoder
 
     def forward(self, state, done, stack, histories, timesteps):
         """
@@ -539,8 +544,8 @@ if __name__ == '__main__':
     state_tensor = torch.tensor(face_str2int(cc.to_string()), dtype=torch.int64)
     print(simulate(state_tensor, model))
 
-    print("ActionStateDecisionFormer")
-    model = ActionStateDecisionFormer(config)
+    print("StateActionDecisionFormer")
+    model = StateActionDecisionFormer(config)
     state = torch.zeros(10, max_len, 24, dtype=torch.int64)
     action = torch.zeros(10, max_len - 1, 1, dtype=torch.int64)
     output = model(state, action, timestep)
