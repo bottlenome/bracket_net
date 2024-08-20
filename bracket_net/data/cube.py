@@ -383,7 +383,7 @@ def RewardStateActionLoader(val_test_rate=0.1, batch_size=32, size=None):
 
 DFS_STACK_WIDTH = 20
 DFS_STACK_HEIGHT = 20
-def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
+def DFSLoader(val_test_rate=0.1, batch_size=32, size=None):
     data = RubicDFSDataSet(max_size=size)
 
     train_size = int(len(data) * (1 - 2 * val_test_rate))
@@ -400,7 +400,7 @@ def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
 
         for item in batch_data:
             states.append(torch.tensor(item["state"], dtype=torch.float32))
-            dones.append(torch.tensor(item["done"], dtype=torch.float32))
+            dones.append(torch.tensor(item["done"], dtype=torch.int64))
 
             stack_items = []
             for stack_item in item["stack"]:
@@ -446,7 +446,7 @@ def RubicDFSLoader(val_test_rate=0.1, batch_size=32, size=None):
             stacks.append(stack)
             histories.append(history)
         states = pad_sequence(states, batch_first=True, padding_value=-1)
-        dones = pad_sequence(dones, batch_first=True, padding_value=-1)
+        dones = pad_sequence(dones, batch_first=True, padding_value=2)
 
         # 3d padding for stack list
         max_c = max([s.shape[0] for s in stacks])
@@ -495,8 +495,8 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "RewardStateActionLoader":
         return RewardStateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
-    elif loder_name == "RubicDFSLoader":
-        return RubicDFSLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "DFSLoader":
+        return DFSLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     else:
         raise ValueError("Invalid loder_name: {}".format(loder_name))
 
@@ -518,8 +518,8 @@ if __name__ == '__main__':
     print("data size", len(d))
     print("example data[1]", d[1])
 
-    print("RubicDFSLoader")
-    data_loader, _, _ = RubicDFSLoader(0.1, 10, size=1000)
+    print("DFSLoader")
+    data_loader, _, _ = DFSLoader(0.1, 10, size=1000)
 
     for i in data_loader:
         print("batch_size", len(i))

@@ -92,16 +92,16 @@ def simulate_with_state_action(initial_state, model):
 
 
 def simulate_dfs(initial_state, model):
-    from ...data.cube import face_int2str
     from ...data.cube_model.enums import Move
     from ...data.cube_model.coord import CoordCube
-    from ...data.cube import DFS_STACK_WIDTH, DFS_STACK_HEIGHT
 
+    p = DebugLogger.get_instance()
     co_cube = CoordCube()
     co_cube.cornperm = int(initial_state[0].item())
     co_cube.corntwist = int(initial_state[1].item())
     device = next(model.parameters()).device
     initial_state = initial_state.unsqueeze(0).unsqueeze(0)
+    initial_state = initial_state / 5040.
     state = initial_state
     done = None
     stack = None
@@ -110,17 +110,25 @@ def simulate_dfs(initial_state, model):
     for _ in range(40*4):
         done, stack, histories, state_hat = model(state, done, stack, histories, timestep)
         state = torch.cat([initial_state, state_hat], dim=1)
-        if done[0, -1].item() > 0.5:
+        p.rint(f"dones:{done}")
+
+        done = done.argmax(dim=-1)
+        if done[0, -1].argmax(dim=-1) == 1:
             if histories.size(1) < 1:
+                p.rint("invalid histories")
                 return 0
             moves = histories[0, -1].argmax(dim=-1)
-            try:
-                for move in moves:
-                    if co_cube.is_solved():
-                        return 1
+            for move in moves:
+                p.rint(f"move:{moves.item()}")
+                if co_cube.is_solved():
+                    p.rint("solved")
+                    return 1
+                try:
                     co_cube.move(Move(move.item()))
-            except Exception as e:
-                return 0
+                except Exception as e:
+                    p.rint("invalid move")
+                    return 0
+    p.rint("reach max steps")
     return 0
 
 
@@ -329,7 +337,11 @@ class DFSDecisionFormer(BaseDecisionFormer):
             nn.Linear(config.params.d_model, config.params.d_model),
             nn.Tanh())
         self.done_encoder = nn.Sequential(
-            nn.Linear(1, config.params.d_model),
+            nn.Embedding(2 + 1, config.params.d_model),  # True, False, padding
+            nn.ReLU(),
+            nn.Linear(config.params.d_model, config.params.d_model),
+            nn.ReLU(),
+            nn.Linear(config.params.d_model, config.params.d_model),
             nn.Tanh()
         )
         self.stacks_encoder = nn.Sequential(
@@ -354,7 +366,7 @@ class DFSDecisionFormer(BaseDecisionFormer):
         self.position_embedding = nn.Parameter(torch.zeros(1, (40 * 4) + 1, config.params.d_model))
 
         self.state_head = nn.Linear(config.params.d_model, 2)
-        self.done_head  = nn.Linear(config.params.d_model, 1)
+        self.done_head  = nn.Linear(config.params.d_model, 2)
         self.stack_head = nn.Linear(config.params.d_model, DFS_STACK_WIDTH * DFS_STACK_HEIGHT)
         self.history_head = nn.Linear(config.params.d_model, self.history_size)
 
@@ -377,8 +389,6 @@ class DFSDecisionFormer(BaseDecisionFormer):
         embedding_dim = state_encoded.size(-1)
         shift = None
         if done is not None:
-            if done.dim() == 2:
-                done = done.unsqueeze(-1)
             done_encoded = self.done_encoder(done)
         if stack is not None:
             stack_encoded = self.stacks_encoder(stack)
@@ -389,7 +399,7 @@ class DFSDecisionFormer(BaseDecisionFormer):
 
         if done is None and stack is None and histories is None:
             seq = 1
-            done_encoded = torch.zeros(batch_size, seq, embedding_dim, dtype=torch.float32, device=state.device)
+            done_encoded = torch.zeros(batch_size, seq, embedding_dim, dtype=torch.int64, device=state.device)
             stack_encoded = torch.zeros(batch_size, seq, embedding_dim, dtype=torch.float32, device=state.device)
             history_encoded = torch.zeros(batch_size, seq, embedding_dim, dtype=torch.float32, device=state.device)
             shift = -3
@@ -438,14 +448,21 @@ class DFSDecisionFormer(BaseDecisionFormer):
     def loss_fn(self, y, x):
         return torch.nn.functional.mse_loss(y, x)
 
+    def done_loss_fn(self, y, x):
+        y = y.view(-1, 2)
+        x = x.view(-1)
+        return torch.nn.functional.cross_entropy(y, x, ignore_index=2)
+
     def step(self, batch, batch_idx, step_name):
         from ...data.cube import DFS_STACK_WIDTH, DFS_STACK_HEIGHT
         state, done, stack, histories = batch
         batch_size = state.size(0)
         timestep = torch.zeros(batch_size, 1, 1, dtype=torch.int64, device=state.device)
+        state = state / 5040.
+        stack = stack / 5040.
         done_hat, stack_hat, histories_hat, state_hat = self(state, done, stack, histories, timestep)
         done_hat = done_hat.squeeze(-1)
-        done_loss = self.loss_fn(done_hat, done)
+        done_loss = self.done_loss_fn(done_hat, done)
         stack_hat = stack_hat.view(batch_size, -1, DFS_STACK_WIDTH, DFS_STACK_HEIGHT)
         stack_loss = self.loss_fn(stack_hat, stack)
         histories_hat = histories_hat[:, :, :histories.size(2)]
@@ -568,7 +585,7 @@ if __name__ == '__main__':
     print("state", state_hat.shape)
     print()
 
-    done = torch.zeros(10, 1, dtype=torch.float32)
+    done = torch.zeros(10, 1, dtype=torch.int64)
     done_hat, stack_hat, histories_hat, state_hat = model(state, done, stack, histories, timestep)
     print("done", done_hat.shape)
     print("stack", stack_hat.shape)
@@ -601,7 +618,7 @@ if __name__ == '__main__':
     print("state", state_hat.shape)
     print()
 
-    done = torch.zeros(10, 2, dtype=torch.float32)
+    done = torch.zeros(10, 2, dtype=torch.int64)
     done_hat, stack_hat, histories_hat, state_hat = model(state, done, stack, histories, timestep)
     print("done", done_hat.shape)
     print("stack", stack_hat.shape)
