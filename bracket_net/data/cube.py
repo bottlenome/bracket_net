@@ -493,6 +493,8 @@ def create_dataloader(loder_name, val_test_rate, batch_size, size=None):
         return StateNextActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "StateActionLoader":
         return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
+    elif loder_name == "MemoryStateActionLoader":
+        return StateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "RewardStateActionLoader":
         return RewardStateActionLoader(val_test_rate=val_test_rate, batch_size=batch_size, size=size)
     elif loder_name == "DFSLoader":

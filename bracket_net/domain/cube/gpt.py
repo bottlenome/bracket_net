@@ -103,23 +103,23 @@ def simulate_dfs(initial_state, model):
     initial_state = initial_state.unsqueeze(0).unsqueeze(0)
     initial_state = initial_state / 5040.
     state = initial_state
-    done = None
+    done = torch.zeros(1, 1, dtype=torch.int64, device=device)
     stack = None
     histories = None
     timestep = torch.zeros(1, 1, 1, dtype=torch.int64, device=device)
     for _ in range(40*4):
         done, stack, histories, state_hat = model(state, done, stack, histories, timestep)
         state = torch.cat([initial_state, state_hat], dim=1)
-        p.rint(f"dones:{done}")
-
         done = done.argmax(dim=-1)
-        if done[0, -1].argmax(dim=-1) == 1:
+        if done[0, -1] == 1:
+            p.rint("done found")
+            p.rint(f"histories.shape:{histories.shape}")
             if histories.size(1) < 1:
                 p.rint("invalid histories")
                 return 0
-            moves = histories[0, -1].argmax(dim=-1)
+            moves = histories[0].argmax(dim=-1)
             for move in moves:
-                p.rint(f"move:{moves.item()}")
+                p.rint(f"move:{move.item()}")
                 if co_cube.is_solved():
                     p.rint("solved")
                     return 1
@@ -174,6 +174,9 @@ class BaseDecisionFormer(pl.LightningModule):
 
         self.lr = config.params.lr
 
+    def expand_token(self, token):
+        return token
+
     def forward(self, state, action, timesteps, rtgs = None):
         """
         Args:
@@ -198,6 +201,7 @@ class BaseDecisionFormer(pl.LightningModule):
             token_embedding = torch.cat([state_encoded, action_encoded_pad], dim=2)
         token_embedding = token_embedding.view(batch_size, -1, embedding_dim)
         token_embedding = token_embedding[:, :-2, :]
+        token_embedding = self.expand_token(token_embedding)
 
         global_position_embedding = self.global_position_embedding.expand(batch_size, -1, -1)
         timesteps_expand = timesteps.expand(-1, -1, embedding_dim)
@@ -323,6 +327,21 @@ class StateActionDecisionFormer(BaseDecisionFormer):
                 total += solved
             self.log('metrics/val/solved', total / try_num, prog_bar=True)
         return loss
+
+
+class MemoryStateActionDecisionFormer(StateActionDecisionFormer):
+    def __init__(self, config):
+        super().__init__(config)
+        self.memory_encoder = nn.Parameter(torch.zeros(1, 1, config.params.d_model).random_(0, 1))
+
+    def expand_token(self, token):
+        batch_size = token.size(0)
+        memory = self.memory_encoder.expand(batch_size, 1, -1)
+        return torch.cat([memory, token], dim=1)
+
+    def forward(self, state, action, timesteps):
+        ret = super().forward(state, action, timesteps)
+        return ret[:, 1:, :]
 
 
 class DFSDecisionFormer(BaseDecisionFormer):
@@ -461,6 +480,7 @@ class DFSDecisionFormer(BaseDecisionFormer):
         state = state / 5040.
         stack = stack / 5040.
         done_hat, stack_hat, histories_hat, state_hat = self(state, done, stack, histories, timestep)
+
         done_hat = done_hat.squeeze(-1)
         done_loss = self.done_loss_fn(done_hat, done)
         stack_hat = stack_hat.view(batch_size, -1, DFS_STACK_WIDTH, DFS_STACK_HEIGHT)
@@ -469,6 +489,7 @@ class DFSDecisionFormer(BaseDecisionFormer):
         histories_loss = self.loss_fn(histories_hat, histories)
         state_loss = self.loss_fn(state_hat, state)
         loss = done_loss + stack_loss + histories_loss + state_loss
+
         self.log(f'metrics/{step_name}/done_loss', done_loss, prog_bar=False)
         self.log(f'metrics/{step_name}/stack_loss', stack_loss, prog_bar=False)
         self.log(f'metrics/{step_name}/histories_loss', histories_loss, prog_bar=False)
@@ -568,8 +589,11 @@ if __name__ == '__main__':
     output = model(state, action, timestep)
     print(output.shape)
 
-    rtgs = torch.zeros(10, max_len, dtype=torch.float32)
-    output = model(state, action, timestep, rtgs)
+    print("MemoryStateActionDecisionFormer")
+    model = MemoryStateActionDecisionFormer(config)
+    state = torch.zeros(10, max_len, 24, dtype=torch.int64)
+    action = torch.zeros(10, max_len - 1, 1, dtype=torch.int64)
+    output = model(state, action, timestep)
     print(output.shape)
 
     print("DFSDecisionFormer")
