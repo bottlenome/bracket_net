@@ -13,7 +13,10 @@ class Linear(nn.Module):
             self.position_embedding = nn.Embedding(input_size, embed_size)
 
         # 入力層の定義
-        self.input_layer = nn.Linear(2 * embed_size * input_size, hidden_size)
+        if enable_positional_embedding:
+            self.input_layer = nn.Linear(2 * embed_size * input_size, hidden_size)
+        else:
+            self.input_layer = nn.Linear(input_size, hidden_size)
         self.input_batch_norm = nn.BatchNorm1d(hidden_size)
 
         self.num_hidden = num_hidden
