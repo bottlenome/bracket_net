@@ -79,7 +79,8 @@ class DistanceEstimator(pl.LightningModule):
                             hidden_size=config.params.d_model,
                             num_hidden=config.params.num_layers,
                             dropout_prob=config.params.dropout,
-                            output_size=12)
+                            output_size=12,
+                            enable_positional_embedding=False)
         self.lr = config.params.lr
         self.loss_weight = torch.nn.Parameter(torch.tensor(
             [1, 0.2, 0.07142857142857142, 0.022222222222222223,
@@ -141,7 +142,8 @@ class PolicyEstimator(pl.LightningModule):
                             hidden_size=config.params.d_model,
                             num_hidden=config.params.num_layers,
                             output_size=len(Move),
-                            dropout_prob=config.params.dropout)
+                            dropout_prob=config.params.dropout,
+                            enable_positional_embedding=False)
         self.lr = config.params.lr
         self.loss_weight = torch.nn.Parameter(torch.tensor(
             [4.5448347952551926e-05, 7.890168849613381e-05,
