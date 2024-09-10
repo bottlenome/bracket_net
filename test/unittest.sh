@@ -4,6 +4,7 @@ echo "Running unittests"
 
 python bracket_net/model/up_causal_unet.py
 python bracket_net/model/gpt.py
+python bracket_net/model/diffusion.py
 
 python -m bracket_net.domain.planning.reformer
 python -m bracket_net.domain.planning.up_causal_unet
