@@ -19,6 +19,9 @@ data:
   val_test_rate: 0.1
   size_max: null
 
+model:
+  name: "diffusion"
+
 hydra:
   job:
     chdir: False

@@ -43,11 +43,15 @@ class LinearDiffusion(nn.Module):
         # 活性化関数の定義
         self.relu = nn.ReLU()
 
+        self.n_timesteps = n_timesteps
         self.betas = cosine_beta_schedule(n_timesteps)
         alphas = 1 - self.betas
         alphas_cumprod = torch.cumprod(alphas, axis=0)
-        self.sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
-        self.sqrt_one_minus_alphas_cumprod = torch.sqrt(1 - alphas_cumprod)
+        self.sqrt_alphas_cumprod = nn.Parameter(torch.sqrt(alphas_cumprod),
+                                                requires_grad=False)
+        self.sqrt_one_minus_alphas_cumprod = nn.Parameter(
+            torch.sqrt(1 - alphas_cumprod),
+            requires_grad=False)
     
     def extract(self, a, t, x_shape):
         b, *_ = t.shape
@@ -92,7 +96,7 @@ class LinearDiffusion(nn.Module):
             x = self.hidden_layers[i](x)
             x = self.hidden_batch_norms[i](x)
             x = self.relu(x)
-            x += identity 
+            x = x + identity 
             x = self.relu(x)
             x = self.dropout(x)
 

@@ -32,7 +32,10 @@ def main(config):
         from bracket_net.domain.cube.linear import DistanceEstimator
         model = DistanceEstimator(config)
     elif config.data.name == "StateNextActionLoader":
-        from bracket_net.domain.cube.linear import PolicyEstimator
+        if config.model.name == "diffusion":
+            from bracket_net.domain.cube.diffusion import PolicyEstimator
+        else:
+            from bracket_net.domain.cube.linear import PolicyEstimator
         model = PolicyEstimator(config)
     elif config.data.name == "RewardStateActionLoader":
         from bracket_net.domain.cube.gpt import DecisionFormer
