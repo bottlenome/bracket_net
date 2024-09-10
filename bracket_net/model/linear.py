@@ -4,7 +4,8 @@ import torch.nn as nn
 
 class Linear(nn.Module):
     def __init__(self, input_size=24, embed_size=128, hidden_size=128,
-                 num_hidden=4, output_size=1, dropout_prob=0.1, enable_positional_embedding=True):
+                 num_hidden=4, output_size=1, dropout_prob=0.1,
+                 enable_positional_embedding=True, input_num=None):
         super().__init__()
 
         # 位置エンベディングの定義
@@ -16,7 +17,15 @@ class Linear(nn.Module):
         if enable_positional_embedding:
             self.input_layer = nn.Linear(2 * embed_size * input_size, hidden_size)
         else:
-            self.input_layer = nn.Linear(input_size, hidden_size)
+            if input_num is not None:
+                assert(hidden_size % 8 == 0)
+                self.input_layer = nn.Sequential(
+                    nn.Embedding(input_num, int(hidden_size / 8)),
+                    nn.Flatten(),
+                    nn.Linear(hidden_size * 3, hidden_size)
+                )
+            else:
+                self.input_layer = nn.Linear(input_size, hidden_size)
         self.input_batch_norm = nn.BatchNorm1d(hidden_size)
 
         self.num_hidden = num_hidden

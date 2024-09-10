@@ -52,7 +52,8 @@ def simulate_policy(initial_state, model):
         if co_cube.is_solved():
             p.rint("solved")
             return 1
-        state_input = torch.tensor(face_str2int(state_string), dtype=torch.float32).unsqueeze(0) / 7.
+        # state_input = torch.tensor(face_str2int(state_string), dtype=torch.float32).unsqueeze(0) / 7.
+        state_input = torch.tensor(face_str2int(state_string)).unsqueeze(0)
         state_input = state_input.to(next(model.parameters()).device)
         p.rint(f"  src:{state_input}")
         out = model(state_input)
@@ -136,14 +137,15 @@ class DistanceEstimator(pl.LightningModule):
 
 class PolicyEstimator(pl.LightningModule):
     def __init__(self, config):
-        from ...data.cube_model.enums import Move
+        from ...data.cube_model.enums import Move, Color
         super().__init__()
         self.model = Linear(embed_size=config.params.d_model,
                             hidden_size=config.params.d_model,
                             num_hidden=config.params.num_layers,
                             output_size=len(Move),
                             dropout_prob=config.params.dropout,
-                            enable_positional_embedding=False)
+                            enable_positional_embedding=False,
+                            input_num=len(Color) + 1)
         self.lr = config.params.lr
         self.loss_weight = torch.nn.Parameter(torch.tensor(
             [4.5448347952551926e-05, 7.890168849613381e-05,
@@ -154,7 +156,8 @@ class PolicyEstimator(pl.LightningModule):
             requires_grad=False)
 
     def forward(self, x):
-        x = x / 7.
+        # x = x / 7.
+        # x -= 1
         y = self.model(x)
         return y
 
