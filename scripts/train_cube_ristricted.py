@@ -61,7 +61,8 @@ def main(config):
         log_every_n_steps=1,
         logger=wandb_logger,
         max_epochs=config.params.num_epochs,
-        profiler=profiler
+        profiler=profiler,
+        gradient_clip_val=1.0
     )
     trainer.fit(model, train_loader, val_loader)
 

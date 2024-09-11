@@ -61,11 +61,13 @@ class PolicyEstimator(pl.LightningModule):
     def configure_optimizers(self):
         return torch.optim.AdamW(self.parameters(), lr=self.lr)
 
-    def training_step(self, batch, batch_idx):
+    def step(self, batch, batch_idx):
         x, y = batch
-        batch_size = x.size(0)
-        timesteps = torch.randint(0, self.model.n_timesteps, (batch_size,), device=x.device)
-        loss = self.model.loss(x, y, timesteps)
+        loss = self.model.loss(x, y)
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch, batch_idx)
         self.log('metrics/train/loss', loss, prog_bar=True)
         if batch_idx % 100 == 0:
             self.log_gradients()
@@ -81,11 +83,9 @@ class PolicyEstimator(pl.LightningModule):
 
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        batch_size = x.size(0)
-        timesteps = torch.randint(0, self.model.n_timesteps, (batch_size,), device=x.device)
-        loss = self.model.loss(x, y, timesteps)
+        loss = self.step(batch, batch_idx)
         self.log('metrics/val/loss', loss, prog_bar=True)
+        x, _ = batch
         if batch_idx == 0:
             total = 0.
             try_num = 10

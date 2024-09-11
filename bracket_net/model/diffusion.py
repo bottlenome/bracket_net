@@ -15,6 +15,33 @@ def cosine_beta_schedule(timesteps, s=0.008, dtype=torch.float32):
     betas_clipped = np.clip(betas, a_min=0, a_max=0.999)
     return torch.tensor(betas_clipped, dtype=dtype)
 
+class DiffusionModule(nn.Module):
+    def __init__(self, n_timesteps=1000):
+        super().__init__()
+        self.n_timesteps = n_timesteps
+        self.betas = cosine_beta_schedule(n_timesteps)
+        alphas = 1 - self.betas
+        alphas_cumprod = torch.cumprod(alphas, axis=0)
+        self.sqrt_alphas_cumprod = nn.Parameter(torch.sqrt(alphas_cumprod),
+                                                requires_grad=False)
+        self.sqrt_one_minus_alphas_cumprod = nn.Parameter(
+            torch.sqrt(1 - alphas_cumprod),
+            requires_grad=False)
+
+    def extract(self, a, t, x_shape):
+        b, *_ = t.shape
+        out = a.gather(-1, t)
+        return out.reshape(b, *((1,) * (len(x_shape) - 1)))
+
+    def add_noise(self, embed):
+        batch_size = embed.shape[0]
+        time_steps = torch.randint(0, self.n_timesteps, (batch_size,), device=embed.device)
+        noise = torch.randn_like(embed)
+        sqrt_alpha_cumprod_t = self.extract(self.sqrt_alphas_cumprod, time_steps, embed.shape)
+        sqrt_one_minus_alpha_cumprod_t = self.extract(self.sqrt_one_minus_alphas_cumprod, time_steps, embed.shape)
+        return sqrt_alpha_cumprod_t * embed + sqrt_one_minus_alpha_cumprod_t * noise
+
+
 class LinearDiffusion(nn.Module):
     def __init__(self, input_size=24, embed_size=32, hidden_size=128,
                  num_hidden=4, output_size=9, dropout_prob=0.1,
@@ -43,28 +70,11 @@ class LinearDiffusion(nn.Module):
         # 活性化関数の定義
         self.relu = nn.ReLU()
 
-        self.n_timesteps = n_timesteps
-        self.betas = cosine_beta_schedule(n_timesteps)
-        alphas = 1 - self.betas
-        alphas_cumprod = torch.cumprod(alphas, axis=0)
-        self.sqrt_alphas_cumprod = nn.Parameter(torch.sqrt(alphas_cumprod),
-                                                requires_grad=False)
-        self.sqrt_one_minus_alphas_cumprod = nn.Parameter(
-            torch.sqrt(1 - alphas_cumprod),
-            requires_grad=False)
-    
-    def extract(self, a, t, x_shape):
-        b, *_ = t.shape
-        out = a.gather(-1, t)
-        return out.reshape(b, *((1,) * (len(x_shape) - 1)))
+        self.diffusion = DiffusionModule(n_timesteps)
 
-    def loss(self, x, y, time_steps):
+    def loss(self, x, y):
         y_embed = self.output_embedding(y)
-
-        noise = torch.randn_like(y_embed)
-        sqrt_alpha_cumprod_t = self.extract(self.sqrt_alphas_cumprod, time_steps, y_embed.shape)
-        sqrt_one_minus_alpha_cumprod_t = self.extract(self.sqrt_one_minus_alphas_cumprod, time_steps, y_embed.shape)
-        y_noisy = sqrt_alpha_cumprod_t * y_embed + sqrt_one_minus_alpha_cumprod_t * noise
+        y_noisy = self.diffusion.add_noise(y_embed)
 
         x = self(x)
 
