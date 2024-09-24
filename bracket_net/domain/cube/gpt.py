@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from .utils import DebugLogger
+from ...model.diffusion import DiffusionModule
 
 
 def get_single_rtgs(reward, device):
@@ -80,7 +81,13 @@ def simulate_with_state_action(initial_state, model):
                 [state, get_single_state(co_cube.to_string(), device)], dim=1)
             # action and timestep is no need to update
         y = model.estimate(state, action, timestep)
-        action = y[:, 0::2, :].argmax(dim=-1)
+        if y.size(-1) == 1:
+            if action is None:
+                action = y
+            else:
+                action = torch.cat([action, y], dim=1)
+        else:
+            action = y[:, 0::2, :].argmax(dim=-1)
         p.rint(f"move:{action[:, -1].item()}")
         try:
             co_cube.move(Move(action[:, -1].item()))
@@ -327,6 +334,58 @@ class StateActionDecisionFormer(BaseDecisionFormer):
                 total += solved
             self.log('metrics/val/solved', total / try_num, prog_bar=True)
         return loss
+
+
+class DiffusionStateActionDecisionFormer(StateActionDecisionFormer):
+    def __init__(self, config):
+        super().__init__(config)
+        self.head = nn.Identity()
+        self.diffusion = DiffusionModule()
+        from ...data.cube_model.enums import Move
+        self.n_output = len(Move)
+
+    def estimate(self, state, action, timesteps, rtgs=None):
+        y_hat = super().estimate(state, action, timesteps, rtgs)
+        action = y_hat[:, 0::2, :]
+        last_action = action[:, -1, :]
+        action_index = self.diffusion.predict(last_action, self.n_output, self.action_encoder)
+        return action_index
+
+    def forward(self, state, action, timesteps):
+        y_hat = super().forward(state, action, timesteps)
+        action_hat = y_hat[:, 0::2, :]
+        return action_hat
+
+    def step(self, batch, batch_idx):
+        state, action = batch
+        batch_size = state.size(0)
+        timestep = torch.zeros(batch_size, 1, 1, dtype=torch.int64, device=state.device)
+        action_hat = self(state, action, timestep)
+
+        action_embed = self.action_encoder(action)
+        # action_noisy = self.diffusion.add_noise(action_embed)
+        action_noisy = action_embed
+
+        loss = torch.nn.functional.mse_loss(action_hat, action_noisy)
+
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self.step(batch, batch_idx)
+        self.log('metrics/train/loss', loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self.step(batch, batch_idx)
+        self.log('metrics/val/loss', loss, prog_bar=True)
+        if batch_idx == 0:
+            total = 0.
+            try_num = 10
+            for i in range(try_num):
+                state, _ = batch
+                solved = simulate_with_state_action(state[i, 0], self)
+                total += solved
+            self.log('metrics/val/solved', total / try_num, prog_bar=True)
 
 
 class MemoryStateActionDecisionFormer(StateActionDecisionFormer):

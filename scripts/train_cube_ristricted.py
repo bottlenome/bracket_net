@@ -41,8 +41,12 @@ def main(config):
         from bracket_net.domain.cube.gpt import DecisionFormer
         model = DecisionFormer(config)
     elif config.data.name == "StateActionLoader":
-        from bracket_net.domain.cube.gpt import StateActionDecisionFormer
-        model = StateActionDecisionFormer(config)
+        if config.model.name == "diffusion":
+            from bracket_net.domain.cube.gpt import DiffusionStateActionDecisionFormer
+            model = DiffusionStateActionDecisionFormer(config)
+        else:
+            from bracket_net.domain.cube.gpt import StateActionDecisionFormer
+            model = StateActionDecisionFormer(config)
     elif config.data.name == "MemoryStateActionLoader":
         from bracket_net.domain.cube.gpt import MemoryStateActionDecisionFormer
         model = MemoryStateActionDecisionFormer(config)
@@ -62,7 +66,7 @@ def main(config):
         logger=wandb_logger,
         max_epochs=config.params.num_epochs,
         profiler=profiler,
-        gradient_clip_val=1.0
+        gradient_clip_val=10.0
     )
     trainer.fit(model, train_loader, val_loader)
 

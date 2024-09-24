@@ -41,6 +41,18 @@ class DiffusionModule(nn.Module):
         sqrt_one_minus_alpha_cumprod_t = self.extract(self.sqrt_one_minus_alphas_cumprod, time_steps, embed.shape)
         return sqrt_alpha_cumprod_t * embed + sqrt_one_minus_alpha_cumprod_t * noise
 
+    def predict(self, x, n_output, embedding_fn):
+        batch_size = x.size(0)
+        # make 0 to self.output_size - 1 array
+        indexs = torch.arange(n_output, device=x.device)
+        assert(batch_size == 1)
+        indexs = indexs.unsqueeze(0)
+        indexs = embedding_fn(indexs)
+        indexs = indexs.unsqueeze(0)
+        x = x.unsqueeze(1)
+        similarity = torch.nn.functional.cosine_similarity(x, indexs, dim=-1)
+        return similarity.argmax(dim=-1)
+
 
 class LinearDiffusion(nn.Module):
     def __init__(self, input_size=24, embed_size=32, hidden_size=128,
@@ -64,6 +76,8 @@ class LinearDiffusion(nn.Module):
             self.hidden_layers.append(nn.Linear(hidden_size, hidden_size))
             self.hidden_batch_norms.append(nn.BatchNorm1d(hidden_size))
 
+        self.head = nn.Linear(hidden_size, output_size)
+
         # Dropout層の定義
         self.dropout = nn.Dropout(p=dropout_prob)
 
@@ -72,29 +86,21 @@ class LinearDiffusion(nn.Module):
 
         self.diffusion = DiffusionModule(n_timesteps)
 
-    def loss(self, x, y):
-        y_embed = self.output_embedding(y)
-        y_noisy = self.diffusion.add_noise(y_embed)
+    def loss(self, x, y, noise=True):
+        estimate = self(x, noise)
 
-        x = self(x)
-
-        loss = torch.nn.functional.mse_loss(x, y_noisy)
+        loss = nn.functional.cross_entropy(estimate, y)
 
         return loss
 
     def predict(self, x):
-        x = self(x)
-        batch_size = x.size(0)
-        # make 0 to self.output_size - 1 array
-        indexs = torch.arange(self.output_size, device=x.device)
-        indexs = self.output_embedding(indexs)
-        indexs = indexs.unsqueeze(0)
-        x = x.unsqueeze(1)
-        similarity = torch.nn.functional.cosine_similarity(x, indexs, dim=-1)
-        return similarity.argmax(dim=-1)
+        y = self(x, noise=False)
+        return y.argmax(dim=-1)
 
-    def forward(self, x):
+    def forward(self, x, noise=True):
         x = self.input_embedding(x)
+        if noise is True:
+            x = self.diffusion.add_noise(x)
         x = x.view(x.size(0), -1)
         x = self.input_layer(x)
         x = self.input_batch_norm(x)
