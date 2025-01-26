@@ -283,7 +283,8 @@ def get_moves(batch):
 def BaseLoader(collate_fn, val_test_rate=0.1, batch_size=32, size=None):
     data = R222ShortestAll(size=size)
 
-    train_data_start = 1 # ignore the first data because it is solved state
+    train_data_start = 0
+    # train_data_start = 1 # ignore the first data because it is solved state
     train_data_end = int(len(data)*(1 - 2*val_test_rate))
     train_dataloader = IterableWrapper(data[train_data_start:train_data_end])
     train_dataloader = train_dataloader.batch(batch_size=batch_size, drop_last=True)
