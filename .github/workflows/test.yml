@@ -12,10 +12,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: recursive
-        lfs: true
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          lfs: false
+
+      - name: Restore cube dataset
+        uses: actions/cache@v3
+        with:
+          path: data/R222ShortestAll.pkl
+          key: cube-dataset-v1
     - name: Log in to Docker Hub
       uses: docker/login-action@v1
       with:
