@@ -112,10 +112,11 @@ class LinearDiffusion(nn.Module):
             x = self.hidden_layers[i](x)
             x = self.hidden_batch_norms[i](x)
             x = self.relu(x)
-            x = x + identity 
+            x = x + identity
             x = self.relu(x)
             x = self.dropout(x)
 
+        x = self.head(x)
         return x
 
 
