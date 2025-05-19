@@ -12,9 +12,25 @@ from torchdata.datapipes.iter import IterableWrapper
 from torch.nn.utils.rnn import pad_sequence
 import pickle as pkl
 import os
+import re
+from urllib import request
 from torch.utils.data import random_split
 
 from functools import cache
+
+def _download_from_google_drive(file_id: str, destination: str) -> None:
+    """Download a file from Google Drive given a file ID."""
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    opener = request.build_opener(request.HTTPCookieProcessor())
+    response = opener.open(url)
+    data = response.read().decode()
+    m = re.search(r'confirm=([0-9A-Za-z_]+)', data)
+    if m:
+        confirm_token = m.group(1)
+        download_url = url + f"&confirm={confirm_token}"
+        response = opener.open(download_url)
+    with open(destination, "wb") as f:
+        f.write(response.read())
 
 class RubicDataset(Dataset):
     def __init__(self, data, transform=None):
@@ -30,10 +46,16 @@ class RubicDataset(Dataset):
         return self.data[idx]
 
 def R222ShortestAll(transform=None, size=None):
-    """ Load R222ShortestAll.pkl that contains all shortest moves of 2x2x2 cube
-        data: (face, shortest_moves)
-    """
-    data = pkl.load(open('./data/R222ShortestAll.pkl', 'rb'))
+    """Load R222ShortestAll.pkl that contains all shortest moves of 2x2x2 cube
+    data: (face, shortest_moves)
+    If the file does not exist, it will be downloaded from Google Drive."""
+    path = "./data/R222ShortestAll.pkl"
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        _download_from_google_drive(
+            "1H42CfagdAVYuYDb9RDycPFZ3DEW6U_4k", path
+        )
+    data = pkl.load(open(path, "rb"))
     if size is not None:
         data = data[:size]
     return RubicDataset(data, transform=transform)
